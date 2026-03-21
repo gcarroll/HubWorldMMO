@@ -1,0 +1,57 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0.0",
+    "FriendlyName": "RiftVault",
+    "Description": "Modular, data-driven inventory and equipment plugin for Unreal Engine 5. GAS-native, Mover-compatible, Mutable-first.",
+    "Category": "Gameplay",
+    "CreatedBy": "RiftVault Development",
+    "CanContainContent": true,
+    "IsBetaVersion": true,
+    "IsExperimentalVersion": false,
+    "Installed": false,
+    "Modules": [
+        {
+            "Name": "RiftVaultCore",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        },
+        {
+            "Name": "RiftVaultSave",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        },
+        {
+            "Name": "RiftVaultInventory",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        },
+        {
+            "Name": "RiftVaultUI",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        }
+    ],
+    "Plugins": [
+        {
+            "Name": "GameplayAbilities",
+            "Enabled": true
+        },
+        {
+            "Name": "Niagara",
+            "Enabled": true
+        },
+        {
+            "Name": "ModelViewViewModel",
+            "Enabled": true
+        },
+        {
+            "Name": "Mutable",
+            "Enabled": true
+        },
+        {
+            "Name": "Mover",
+            "Enabled": true
+        }
+    ]
+}
