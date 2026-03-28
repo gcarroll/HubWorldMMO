@@ -22,6 +22,9 @@ RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Container_Vendor);
 /** Identifies a loot container in the world. */
 RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Container_Loot);
 
+/** Identifies a ground-drop container on an ARiftPickup actor. */
+RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Container_Ground);
+
 // ------------------------------------------------------------------
 // Item Trait Tags
 // ------------------------------------------------------------------
@@ -43,6 +46,9 @@ RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Item_Trait_Broken);
 
 /** Item can be dropped into the world. */
 RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Item_Trait_Droppable);
+
+/** Item can be deleted from the inventory without dropping. */
+RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Item_Trait_Deletable);
 
 /** Item can be sold to a vendor. */
 RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Item_Trait_Sellable);
@@ -123,3 +129,48 @@ RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Currency);
 
 /** Default credits currency used in economy transactions. */
 RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Currency_Credits);
+
+// ------------------------------------------------------------------
+// Component Identity Tags
+// ------------------------------------------------------------------
+
+/**
+ * Identifies the UCustomizableSkeletalComponent that represents the character body mesh on an APawn.
+ * Add the tag string "Rift.Component.BodyMesh" to the component's ComponentTags array
+ * in the pawn Blueprint to be located by URiftMutableEquipmentComponent.
+ */
+RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Component_BodyMesh);
+
+// ------------------------------------------------------------------
+// Weapon State Tags
+// ------------------------------------------------------------------
+
+/** Root tag for all weapon stance states. Game projects add child tags beneath this. */
+RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Weapon_State);
+
+RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Weapon_State_Rifle);
+RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Weapon_State_Pistol);
+RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Weapon_State_Sword);
+RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Weapon_State_Shield);
+
+// ------------------------------------------------------------------
+// Ability Activation Tags
+// ------------------------------------------------------------------
+
+/**
+ * Gameplay event tag used to activate URiftAbility_Equip.
+ * Send via SendGameplayEventToActor with OptionalObject = URiftItemInstance, TargetTags = slot tag.
+ */
+RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Ability_Equip);
+
+/**
+ * Gameplay event tag used to activate URiftAbility_Unequip.
+ * Send via SendGameplayEventToActor with TargetTags = slot tag.
+ */
+RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Ability_Unequip);
+
+/**
+ * Gameplay event tag used to activate URiftAbility_Drop.
+ * Send via SendGameplayEventToActor with OptionalObject = URiftItemInstance to drop.
+ */
+RIFTVAULTCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Rift_Ability_Drop);

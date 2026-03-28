@@ -9,7 +9,8 @@
 URiftContainerDefinition::URiftContainerDefinition()
 {
     DisplayName = NSLOCTEXT("RiftVault", "DefaultContainerName", "Container");
-    Capacity = 4;
+    GridWidth  = 5;
+    GridHeight = 4;
 
     // Default compatibility query accepts any item that has the base Rift.Item tag.
     // Designers can override this to restrict containers to specific item traits.
@@ -34,7 +35,15 @@ bool URiftContainerDefinition::AcceptsItemWithTags(const FGameplayTagContainer& 
         return true;
     }
 
-    return ItemCompatibilityQuery.Matches(ItemTags);
+    const bool bMatches = ItemCompatibilityQuery.Matches(ItemTags);
+    if (!bMatches)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("URiftContainerDefinition::AcceptsItemWithTags — REJECTED. Container: %s | Item tags: %s | Query: %s"),
+            *ContainerTag.ToString(),
+            *ItemTags.ToString(),
+            *ItemCompatibilityQuery.GetDescription());
+    }
+    return bMatches;
 }
 
 #if WITH_EDITOR
@@ -45,9 +54,14 @@ EDataValidationResult URiftContainerDefinition::IsDataValid(FDataValidationConte
         Context.AddError(NSLOCTEXT("RiftVault", "MissingContainerTag", "Container Definition is missing a ContainerTag. Set a Rift.Container.* tag."));
     }
 
-    if (Capacity <= 0)
+    if (GridWidth <= 0)
     {
-        Context.AddError(NSLOCTEXT("RiftVault", "InvalidCapacity", "Container capacity must be at least 1."));
+        Context.AddError(NSLOCTEXT("RiftVault", "InvalidGridWidth", "Container GridWidth must be at least 1."));
+    }
+
+    if (GridHeight <= 0)
+    {
+        Context.AddError(NSLOCTEXT("RiftVault", "InvalidGridHeight", "Container GridHeight must be at least 1."));
     }
 
     if (ItemCompatibilityQuery.IsEmpty())

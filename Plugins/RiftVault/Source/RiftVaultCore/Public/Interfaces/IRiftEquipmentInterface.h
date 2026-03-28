@@ -5,6 +5,7 @@
 #include "UObject/Interface.h"
 #include "IRiftEquipmentInterface.generated.h"
 
+// UInterface boilerplate required by UHT — not used directly.
 UINTERFACE(MinimalAPI, Blueprintable)
 class URiftEquipmentInterface : public UInterface
 {
@@ -12,15 +13,28 @@ class URiftEquipmentInterface : public UInterface
 };
 
 /**
- * Allows any actor to advertise that it owns a URiftEquipmentComponent.
+ * Implemented by any pawn that owns a URiftEquipmentComponent.
  *
- * Returns UActorComponent* rather than URiftEquipmentComponent* because
- * URiftEquipmentComponent lives in RiftVaultEquipment — referencing it here
- * in Core would create a cross-module UHT violation. Callers cast the result
- * to URiftEquipmentComponent* after retrieving it.
+ * WHY UActorComponent* INSTEAD OF URiftEquipmentComponent*?
+ * ---------------------------------------------------------
+ * URiftEquipmentComponent lives in the RiftVaultEquipment module.
+ * IRiftEquipmentInterface lives in RiftVaultCore. Including RiftVaultEquipment
+ * headers here would create a circular module dependency since RiftVaultEquipment
+ * depends on RiftVaultCore. Returning UActorComponent* breaks the cycle.
  *
- * NOTE: All equipment operates at the APawn level for Mover compatibility.
- * Do not add ACharacter or USkeletalMeshComponent assumptions here.
+ * Callers cast the result at their own call site:
+ *
+ *   UActorComponent* Comp = Pawn->Execute_GetEquipmentComponent(Pawn);
+ *   URiftEquipmentComponent* Equipment = Cast<URiftEquipmentComponent>(Comp);
+ *
+ * MOVER COMPATIBILITY NOTE
+ * -------------------------
+ * All equipment logic operates at the APawn level — not ACharacter — to remain
+ * compatible with Unreal's Mover movement system. Do not introduce ACharacter or
+ * USkeletalMeshComponent assumptions into this interface or its implementations.
+ *
+ * Blueprintable is set so that Blueprint pawns can implement the interface
+ * and override GetEquipmentComponent in a Blueprint graph without a C++ base class.
  */
 class RIFTVAULTCORE_API IRiftEquipmentInterface
 {
@@ -30,7 +44,14 @@ public:
 
     /**
      * Returns the equipment component owned by this pawn.
-     * Cast the result to URiftEquipmentComponent* at the call site.
+     *
+     * The default C++ implementation returns nullptr. Override in the concrete
+     * pawn class to return the actual URiftEquipmentComponent subobject.
+     *
+     * Callers should cast the result to URiftEquipmentComponent* before use:
+     *   URiftEquipmentComponent* Eq = Cast<URiftEquipmentComponent>(GetEquipmentComponent());
+     *
+     * @return The pawn's URiftEquipmentComponent, or nullptr if not implemented.
      */
     UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "RiftVault|Interfaces|Equipment")
     UActorComponent* GetEquipmentComponent() const;

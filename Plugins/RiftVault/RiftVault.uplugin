@@ -27,8 +27,23 @@
             "LoadingPhase": "Default"
         },
         {
+            "Name": "RiftVaultEquipment",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        },
+        {
+            "Name": "RiftVaultLoot",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        },
+        {
             "Name": "RiftVaultUI",
             "Type": "Runtime",
+            "LoadingPhase": "Default"
+        },
+        {
+            "Name": "RiftVaultTests",
+            "Type": "DeveloperTool",
             "LoadingPhase": "Default"
         }
     ],

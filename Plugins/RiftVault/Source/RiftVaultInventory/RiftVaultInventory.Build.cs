@@ -28,6 +28,8 @@ public class RiftVaultInventory : ModuleRules
         });
 
         AddVersionBasedDependencies(Target);
+
+        SetupIrisSupport(Target);
     }
 
     public void AddVersionBasedDependencies(ReadOnlyTargetRules Target)

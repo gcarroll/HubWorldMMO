@@ -4,23 +4,39 @@
 #include "FRiftFragmentState.generated.h"
 
 /**
- * Base struct for all RiftVault Item States.
+ * Base struct for all RiftVault per-instance item state objects.
  *
- * Item States store per-instance runtime data for fragments that need it.
- * The definition (URiftItemFragment) holds type-level data shared across all
- * instances of an item. The state holds instance-level data unique to one
- * specific item in the inventory (e.g. this sword's current condition is 73).
+ * DESIGN OVERVIEW
+ * ---------------
+ * Item definitions (URiftItemDefinition / URiftItemFragment) hold type-level
+ * data that is identical for every instance of an item — things like the
+ * display name, icon, max stack size, and ability sets to grant.
  *
- * Not all fragments need a state. URiftFragment_Display has no state — the
- * name and icon are the same for every instance of that item type. Only
- * fragments that track mutable per-instance data define a state subclass.
+ * Item states (this struct and its subclasses) hold instance-level data that
+ * is unique to one specific item sitting in a specific inventory slot — things
+ * like "this sword currently has 73 out of 100 condition" or "this stack
+ * currently has 12 arrows in it."
  *
- * Naming convention: FRift<Capability>State (e.g. FRiftStackState, FRiftConditionState).
+ * Not all fragments need a state. URiftFragment_Display has no state because
+ * every instance of "Iron Sword" has the same name and icon. Only fragments
+ * that track mutable per-instance values define a state subclass.
  *
- * States are stored via TInstancedStruct on URiftItemInstance and replicated
- * using FFastArraySerializer. SynchronizeReplicationState() is called by the
- * replication system after broadcasting an update — use it to sync any
- * "previous value" tracking fields (e.g. LastStackSize = CurrentStackSize).
+ * NAMING CONVENTION
+ * -----------------
+ * FRift<Capability>State
+ * Examples: FRiftStackState, FRiftConditionState
+ *
+ * STORAGE AND REPLICATION
+ * -----------------------
+ * States are stored via TInstancedStruct<FRiftFragmentState> on URiftItemInstance
+ * and replicated using FFastArraySerializer. Because fast arrays deliver
+ * individual element change notifications, the replication system calls
+ * SynchronizeReplicationState() after broadcasting an update to clients.
+ *
+ * Subclasses that need to detect changes (e.g. "did the stack size decrease?")
+ * should maintain a "Last*" shadow field and update it inside
+ * SynchronizeReplicationState() so the old value is available during the
+ * PostReplicatedChange callback before the sync call overwrites it.
  */
 USTRUCT(BlueprintType)
 struct RIFTVAULTCORE_API FRiftFragmentState
@@ -28,12 +44,22 @@ struct RIFTVAULTCORE_API FRiftFragmentState
     GENERATED_BODY()
 
     FRiftFragmentState() = default;
+
+    // Virtual destructor is required because subclasses are destroyed through
+    // base-class pointers when TInstancedStruct releases them.
     virtual ~FRiftFragmentState() noexcept = default;
 
     /**
-     * Called by the Fast Array replication system after an update has been
-     * broadcast to owning clients. Use this to synchronize any fields that
-     * track previous values for change detection.
+     * Called by the Fast Array replication system after a replicated update
+     * has been broadcast to owning clients.
+     *
+     * Override this in subclasses to synchronize any "previous value" shadow
+     * fields used for change detection. For example, FRiftStackState copies
+     * CurrentQuantity into LastQuantity here so that the PostReplicatedChange
+     * callback can compare old vs. new before this sync occurs.
+     *
+     * The base implementation is intentionally empty — not all states need
+     * change tracking, and virtuality is kept cheap via final overrides.
      */
     virtual void SynchronizeReplicationState() { }
 };

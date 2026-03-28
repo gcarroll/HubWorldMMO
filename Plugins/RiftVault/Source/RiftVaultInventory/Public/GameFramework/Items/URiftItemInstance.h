@@ -208,32 +208,50 @@ public:
     /** Calls InitializeState on all fragments in the definition. Server only. */
     void InitializeFragmentStates();
 
+    /**
+     * Calls InitializeFragmentStates on the client during local item reconstruction.
+     * Must be called while bReconstructingLocally is true (set by URiftInventoryComponent
+     * friend via ReconstructItemInstance) so SaveStateForFragment bypasses the authority check.
+     */
+    void InitializeFragmentStatesLocally();
+
     /** Calls ActivateForItem on all fragments. Called after initialization. Server only. */
     void ActivateFragments();
 
     /** Calls DeactivateForItem on all fragments. Called before removal. Server only. */
     void DeactivateFragments();
 
+    /**
+     * Returns the current stack quantity for this item.
+     * Reads from FRiftStackState if the item has URiftFragment_Stack; returns 1 otherwise.
+     * Safe to call on both server and client (reads local fragment state).
+     */
+    int32 GetCurrentQuantity() const;
+
 private:
 
-    /** Unique identifier for this item instance. Set once at creation, never changes. */
-    UPROPERTY(Replicated)
+    /** Unique identifier for this item instance. Server-side only — never sent over the wire. */
+    UPROPERTY()
     FGuid ItemId;
 
     /** The definition describing this item's type. Set once at creation, never changes. */
-    UPROPERTY(Replicated)
+    UPROPERTY()
     TObjectPtr<URiftItemDefinition> ItemDefinition;
 
-    /** Per-instance state data for each fragment that needs runtime state. Replicated. */
-    UPROPERTY(ReplicatedUsing = OnRep_FragmentStates)
+    /** Per-instance state data for each fragment that needs runtime state. Server-authoritative. */
+    UPROPERTY()
     FRiftFragmentStateList FragmentStates;
+
+    /**
+     * When true, SaveStateForFragment bypasses the HasAuthority() check.
+     * Set exclusively by URiftInventoryComponent::ReconstructItemInstance (friend) to allow
+     * fragment state initialization during client-side item reconstruction without authority.
+     */
+    bool bReconstructingLocally = false;
 
     /** Sets the definition. Called once by URiftInventoryComponent during creation. */
     void SetDefinition(const URiftItemDefinition* NewDefinition);
 
     /** Sets the unique ID. Called once by URiftInventoryComponent during creation. */
     void SetItemId(const FGuid& NewItemId);
-
-    UFUNCTION()
-    void OnRep_FragmentStates();
 };

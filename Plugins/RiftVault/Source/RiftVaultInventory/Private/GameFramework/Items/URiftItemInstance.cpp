@@ -4,6 +4,7 @@
 #include "Net/Serialization/FastArraySerializer.h"
 #include "Data/URiftItemDefinition.h"
 #include "GameFramework/Fragments/URiftItemFragment.h"
+#include "GameFramework/Fragments/URiftFragment_Stack.h"
 
 // ------------------------------------------------------------------
 // FRiftFragmentStateList
@@ -120,10 +121,9 @@ URiftItemInstance::URiftItemInstance(const FObjectInitializer& ObjectInitializer
 void URiftItemInstance::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
-    DOREPLIFETIME(URiftItemInstance, ItemId);
-    DOREPLIFETIME(URiftItemInstance, ItemDefinition);
-    DOREPLIFETIME(URiftItemInstance, FragmentStates);
+    // Items are no longer network subobjects. ItemId, ItemDefinition, and FragmentStates
+    // are server-authoritative only. Clients reconstruct item state locally from the
+    // slot descriptor (ItemDefinition + Quantity) received via FRiftSlotList replication.
 }
 
 void URiftItemInstance::GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const
@@ -192,9 +192,10 @@ bool URiftItemInstance::GetStateForFragment(const TSubclassOf<URiftItemFragment>
 
 int32 URiftItemInstance::SaveStateForFragment(const TSubclassOf<URiftItemFragment> FragmentClass, const TInstancedStruct<FRiftFragmentState>& State)
 {
-    if (!HasAuthority())
+    if (!HasAuthority() && !bReconstructingLocally)
     {
-        UE_LOG(LogTemp, Warning, TEXT("URiftItemInstance::SaveStateForFragment called without authority. Item: %s"), *ItemId.ToString());
+        UE_LOG(LogTemp, Warning, TEXT("URiftItemInstance::SaveStateForFragment called without authority. Item: %s"),
+            IsValid(ItemDefinition) ? *ItemDefinition->GetName() : TEXT("(no definition)"));
         return INDEX_NONE;
     }
 
@@ -225,6 +226,19 @@ void URiftItemInstance::InitializeFragmentStates()
             Fragment->InitializeState(this);
         }
     }
+}
+
+void URiftItemInstance::InitializeFragmentStatesLocally()
+{
+    // bReconstructingLocally must already be true (set by URiftInventoryComponent friend).
+    // This allows SaveStateForFragment to run on the client during reconstruction.
+    InitializeFragmentStates();
+}
+
+int32 URiftItemInstance::GetCurrentQuantity() const
+{
+    const URiftFragment_Stack* StackFrag = FindFragment<URiftFragment_Stack>();
+    return StackFrag ? StackFrag->GetCurrentQuantity(this) : 1;
 }
 
 void URiftItemInstance::ActivateFragments()
@@ -267,10 +281,4 @@ void URiftItemInstance::SetDefinition(const URiftItemDefinition* NewDefinition)
 void URiftItemInstance::SetItemId(const FGuid& NewItemId)
 {
     ItemId = NewItemId;
-}
-
-void URiftItemInstance::OnRep_FragmentStates()
-{
-    // Fragment states have been updated from the server.
-    // ViewModels and other listeners will react via the inventory component's delegates.
 }

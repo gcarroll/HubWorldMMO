@@ -16,8 +16,9 @@ public class OWSHubWorldMMO : ModuleRules
             "GameplayAbilities",
             "GameplayTags",
             "GameplayTasks",
-			"AIModule"
-		});
+			"AIModule",
+            "IrisCore"
+        });
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
             "InputCore",

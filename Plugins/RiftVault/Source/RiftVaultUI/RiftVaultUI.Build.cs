@@ -15,6 +15,7 @@ public class RiftVaultUI : ModuleRules
             "RiftVaultCore",
             "RiftVaultSave",
             "RiftVaultInventory",
+            "RiftVaultEquipment",
             "UMG",
             "DeveloperSettings",
             "InputCore"
