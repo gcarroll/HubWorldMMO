@@ -74,7 +74,7 @@ void URiftAbility_Drop::ActivateAbility(
         const int32 SlotIdx = IsValid(ItemContainer) ? ItemContainer->GetSlotIndexOfItem(Item) : INDEX_NONE;
         if (IsValid(ItemContainer) && SlotIdx != INDEX_NONE)
         {
-            InventoryComp->Server_DropItem(ItemContainer->GetContainerTag(), SlotIdx, 200.f, nullptr);
+            InventoryComp->Server_DropItemByObject(ItemContainer, SlotIdx, 200.f, nullptr);
         }
     }
 

@@ -353,7 +353,7 @@ FGuid URiftInventoryComponent::AddItem(URiftItemDefinition* Definition, const in
     // --- Step 1: Fill existing stacks of the same item type first ---
     // Only attempt if this definition has a Stack fragment — avoids iterating
     // all items for non-stackable types.
-    if (Definition->FindFragmentByClass(URiftFragment_Stack::StaticClass()))
+    if (Definition->FindFragment<URiftFragment_Stack>())
     {
         for (const FRiftItemEntry& ItemEntry : Items.Entries)
         {
@@ -368,8 +368,7 @@ FGuid URiftInventoryComponent::AddItem(URiftItemDefinition* Definition, const in
                 continue;
             }
 
-            URiftFragment_Stack* StackFrag = Cast<URiftFragment_Stack>(
-                ExistingItem->FindFragmentByClass(URiftFragment_Stack::StaticClass()));
+            URiftFragment_Stack* StackFrag = ExistingItem->FindFragment<URiftFragment_Stack>();
 
             if (!StackFrag || StackFrag->IsFull(ExistingItem))
             {
@@ -412,38 +411,8 @@ FGuid URiftInventoryComponent::AddItem(URiftItemDefinition* Definition, const in
         FRiftItemEntry NewEntry;
         NewEntry.Item = NewItem;
         Items.Entries.Add(NewEntry);
-        // Items is server-side only — no longer replicated, so no MarkItemDirty.
 
-        // InitializeFragmentStates creates the FRiftStackState with CurrentQuantity = 1.
-        // We then top it up to the desired quantity (or MaxStackSize) via AddQuantity.
-        NewItem->InitializeFragmentStates();
-
-        URiftFragment_Stack* NewStackFrag = Cast<URiftFragment_Stack>(
-            NewItem->FindFragmentByClass(URiftFragment_Stack::StaticClass()));
-
-        if (NewStackFrag && RemainingQuantity > 1)
-        {
-            // InitializeState set CurrentQuantity to 1, so add the rest.
-            // AddQuantity returns overflow that didn't fit in this stack.
-            const int32 Overflow = NewStackFrag->AddQuantity(NewItem, RemainingQuantity - 1);
-            RemainingQuantity = Overflow;
-        }
-        else
-        {
-            // Non-stackable: one slot consumed, one unit placed.
-            RemainingQuantity--;
-        }
-
-        NewItem->ActivateFragments();
-
-        // Sync the slot descriptor Quantity now that fragment state is fully initialized.
-        // This updates the placeholder Quantity=0 set by URiftContainer::AddItem and
-        // marks the slot dirty so the final descriptor replicates to the owning client.
-        RefreshSlotDescriptor(NewItem);
-
-        BroadcastItemEvent(NewItem, Tag_Rift_Event_Item_Added);
-
-        OnItemAdded.Broadcast(NewItem, TargetContainer);
+        RemainingQuantity = FinalizeNewItem(NewItem, TargetContainer, RemainingQuantity);
 
         if (!LastModifiedId.IsValid())
         {
@@ -475,7 +444,7 @@ FGuid URiftInventoryComponent::AddItemToContainer(URiftItemDefinition* Definitio
     FGuid LastModifiedId;
 
     // --- Step 1: Fill existing stacks in the target container first ---
-    if (Definition->FindFragmentByClass(URiftFragment_Stack::StaticClass()))
+    if (Definition->FindFragment<URiftFragment_Stack>())
     {
         for (const FRiftItemEntry& ItemEntry : Items.Entries)
         {
@@ -496,8 +465,7 @@ FGuid URiftInventoryComponent::AddItemToContainer(URiftItemDefinition* Definitio
                 continue;
             }
 
-            URiftFragment_Stack* StackFrag = Cast<URiftFragment_Stack>(
-                ExistingItem->FindFragmentByClass(URiftFragment_Stack::StaticClass()));
+            URiftFragment_Stack* StackFrag = ExistingItem->FindFragment<URiftFragment_Stack>();
 
             if (!StackFrag || StackFrag->IsFull(ExistingItem))
             {
@@ -535,25 +503,8 @@ FGuid URiftInventoryComponent::AddItemToContainer(URiftItemDefinition* Definitio
         FRiftItemEntry NewItemEntry;
         NewItemEntry.Item = NewItem;
         Items.Entries.Add(NewItemEntry);
-        // Items is server-side only — no longer replicated, so no MarkItemDirty.
-        NewItem->InitializeFragmentStates();
 
-        URiftFragment_Stack* NewStackFrag = Cast<URiftFragment_Stack>(
-            NewItem->FindFragmentByClass(URiftFragment_Stack::StaticClass()));
-
-        if (NewStackFrag && RemainingQuantity > 1)
-        {
-            const int32 Overflow = NewStackFrag->AddQuantity(NewItem, RemainingQuantity - 1);
-            RemainingQuantity = Overflow;
-        }
-        else
-        {
-            RemainingQuantity--;
-        }
-
-        NewItem->ActivateFragments();
-        RefreshSlotDescriptor(NewItem);
-        OnItemAdded.Broadcast(NewItem, TargetContainer);
+        RemainingQuantity = FinalizeNewItem(NewItem, TargetContainer, RemainingQuantity);
 
         if (!LastModifiedId.IsValid())
         {
@@ -652,14 +603,24 @@ bool URiftInventoryComponent::MoveItemToContainer(URiftItemInstance* Item, URift
 
 bool URiftInventoryComponent::MoveItemToContainerAtSlot(URiftItemInstance* Item, URiftContainer* TargetContainer, const int32 TargetSlotIndex)
 {
-    if (!IsValid(Item) || !IsValid(TargetContainer) || !TargetContainer->Slots.Entries.IsValidIndex(TargetSlotIndex))
+    if (!IsValid(Item) || !IsValid(TargetContainer))
     {
-        UE_LOG(LogTemp, Warning, TEXT("MoveItemToContainerAtSlot — FAIL: basic validity. Item=%s, Target=%s, SlotIndex=%d valid=%s"),
-            *GetNameSafe(Item),
-            *GetNameSafe(TargetContainer),
-            TargetSlotIndex,
-            (IsValid(TargetContainer) && TargetContainer->Slots.Entries.IsValidIndex(TargetSlotIndex)) ? TEXT("true") : TEXT("false"));
+        UE_LOG(LogTemp, Warning, TEXT("MoveItemToContainerAtSlot — FAIL: basic validity. Item=%s, Target=%s"),
+            *GetNameSafe(Item), *GetNameSafe(TargetContainer));
         return false;
+    }
+
+    // For List containers, grow entries on demand up to capacity so empty slots
+    // can receive drops without being pre-allocated.
+    if (!TargetContainer->Slots.Entries.IsValidIndex(TargetSlotIndex))
+    {
+        const int32 Capacity = TargetContainer->GetCapacity();
+        if (TargetSlotIndex >= Capacity)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("MoveItemToContainerAtSlot — FAIL: SlotIndex=%d exceeds capacity=%d"), TargetSlotIndex, Capacity);
+            return false;
+        }
+        TargetContainer->Slots.Entries.SetNum(TargetSlotIndex + 1);
     }
 
     URiftContainer* SourceContainer = GetContainerForItem(Item);
@@ -688,8 +649,6 @@ bool URiftInventoryComponent::MoveItemToContainerAtSlot(URiftItemInstance* Item,
 
     // Per-slot tag requirement: if the target container has a tag requirement for this slot,
     // the incoming item must carry that tag (e.g. only chest pieces at the Chest slot index).
-    UE_LOG(LogTemp, Warning, TEXT("MoveItemToContainerAtSlot — SlotTagRequirements.Num()=%d, TargetSlotIndex=%d"),
-        TargetContainer->SlotTagRequirements.Num(), TargetSlotIndex);
     if (TargetContainer->SlotTagRequirements.IsValidIndex(TargetSlotIndex)
         && TargetContainer->SlotTagRequirements[TargetSlotIndex].IsValid())
     {
@@ -717,17 +676,9 @@ bool URiftInventoryComponent::MoveItemToContainerAtSlot(URiftItemInstance* Item,
         }
     }
 
-    // Perform the move/swap — update item pointer AND descriptor fields, then mark dirty.
-    SourceContainer->Slots.Entries[SourceSlotIndex].Item           = IsValid(DisplacedItem) ? TObjectPtr<URiftItemInstance>(DisplacedItem) : nullptr;
-    SourceContainer->Slots.Entries[SourceSlotIndex].ItemDefinition = IsValid(DisplacedItem) ? DisplacedItem->GetDefinition() : nullptr;
-    SourceContainer->Slots.Entries[SourceSlotIndex].Quantity       = IsValid(DisplacedItem) ? DisplacedItem->GetCurrentQuantity() : 0;
-
-    TargetContainer->Slots.Entries[TargetSlotIndex].Item           = Item;
-    TargetContainer->Slots.Entries[TargetSlotIndex].ItemDefinition = IsValid(Item) ? Item->GetDefinition() : nullptr;
-    TargetContainer->Slots.Entries[TargetSlotIndex].Quantity       = IsValid(Item) ? Item->GetCurrentQuantity() : 0;
-
-    SourceContainer->Slots.MarkItemDirty(SourceContainer->Slots.Entries[SourceSlotIndex]);
-    TargetContainer->Slots.MarkItemDirty(TargetContainer->Slots.Entries[TargetSlotIndex]);
+    // Perform the move/swap.
+    SourceContainer->RefreshSlotEntry(SourceSlotIndex, DisplacedItem);
+    TargetContainer->RefreshSlotEntry(TargetSlotIndex, Item);
 
     if (IsValid(DisplacedItem))
     {
@@ -745,7 +696,7 @@ bool URiftInventoryComponent::MoveItemToContainerAtSlot(URiftItemInstance* Item,
 
 void URiftInventoryComponent::Server_MoveItemToSlot_Implementation(FGameplayTag ContainerTag, int32 SourceSlotIndex, int32 TargetSlotIndex)
 {
-    URiftContainer* Container = GetContainerByTag(ContainerTag);
+    URiftContainer* Container = FindContainerWithItemAtSlot(ContainerTag, SourceSlotIndex);
     if (!IsValid(Container)) { return; }
 
     URiftItemInstance* Item = Container->GetItemAtSlot(SourceSlotIndex);
@@ -756,24 +707,7 @@ void URiftInventoryComponent::Server_MoveItemToSlot_Implementation(FGameplayTag 
 
 void URiftInventoryComponent::Server_MoveItemToContainerAtSlot_Implementation(FGameplayTag SourceContainerTag, int32 SourceSlotIndex, FGameplayTag TargetContainerTag, int32 TargetSlotIndex)
 {
-    UE_LOG(LogTemp, Warning, TEXT("Server_MoveItemToContainerAtSlot — Src: %s[%d] -> Tgt: %s[%d]"),
-        *SourceContainerTag.ToString(), SourceSlotIndex, *TargetContainerTag.ToString(), TargetSlotIndex);
-
-    // When multiple containers share the same tag (e.g. per-slot equipment containers),
-    // GetContainerByTag always returns the first match which may not be correct.
-    // For the source: find the container with a matching tag that actually holds an item at that slot.
-    // For the target: find the container with a matching tag that accepts the item.
-    URiftContainer* SourceContainer = nullptr;
-    for (const FRiftContainerEntry& Entry : Containers.Entries)
-    {
-        if (!IsValid(Entry.Container)) continue;
-        if (Entry.Container->GetContainerTag() != SourceContainerTag) continue;
-        if (IsValid(Entry.Container->GetItemAtSlot(SourceSlotIndex)))
-        {
-            SourceContainer = Entry.Container;
-            break;
-        }
-    }
+    URiftContainer* SourceContainer = FindContainerWithItemAtSlot(SourceContainerTag, SourceSlotIndex);
     if (!IsValid(SourceContainer))
     {
         UE_LOG(LogTemp, Warning, TEXT("Server_MoveItemToContainerAtSlot — source container MISSING or no item at slot %d for tag %s"), SourceSlotIndex, *SourceContainerTag.ToString());
@@ -809,16 +743,11 @@ void URiftInventoryComponent::Server_MoveItemToContainerAtSlot_Implementation(FG
         return;
     }
 
-    const bool bMoved = MoveItemToContainerAtSlot(Item, TargetContainer, TargetSlotIndex);
-    UE_LOG(LogTemp, Warning, TEXT("Server_MoveItemToContainerAtSlot — MoveItemToContainerAtSlot returned: %s"), bMoved ? TEXT("true") : TEXT("false"));
+    MoveItemToContainerAtSlot(Item, TargetContainer, TargetSlotIndex);
 }
 
 void URiftInventoryComponent::Server_MoveItemToContainerAtSlotByObject_Implementation(URiftContainer* SourceContainer, int32 SourceSlotIndex, URiftContainer* TargetContainer, int32 TargetSlotIndex)
 {
-    UE_LOG(LogTemp, Warning, TEXT("Server_MoveItemToContainerAtSlotByObject — Src: %s[%d] -> Tgt: %s[%d]"),
-        IsValid(SourceContainer) ? *SourceContainer->GetContainerTag().ToString() : TEXT("null"), SourceSlotIndex,
-        IsValid(TargetContainer) ? *TargetContainer->GetContainerTag().ToString() : TEXT("null"), TargetSlotIndex);
-
     // Validate that both containers actually belong to this inventory (server-side security check).
     bool bSourceOwned = false;
     bool bTargetOwned = false;
@@ -843,24 +772,37 @@ void URiftInventoryComponent::Server_MoveItemToContainerAtSlotByObject_Implement
         return;
     }
 
-    const bool bMoved = MoveItemToContainerAtSlot(Item, TargetContainer, TargetSlotIndex);
-    UE_LOG(LogTemp, Warning, TEXT("Server_MoveItemToContainerAtSlotByObject — MoveItemToContainerAtSlot returned: %s"), bMoved ? TEXT("true") : TEXT("false"));
+    MoveItemToContainerAtSlot(Item, TargetContainer, TargetSlotIndex);
+}
+
+void URiftInventoryComponent::Server_MoveItemToSlotByObject_Implementation(URiftContainer* Container, int32 SourceSlotIndex, int32 TargetSlotIndex)
+{
+    // Validate the container belongs to this inventory.
+    bool bOwned = false;
+    for (const FRiftContainerEntry& Entry : Containers.Entries)
+    {
+        if (Entry.Container == Container) { bOwned = true; break; }
+    }
+    if (!bOwned || !IsValid(Container)) { return; }
+
+    URiftItemInstance* Item = Container->GetItemAtSlot(SourceSlotIndex);
+    if (!IsValid(Item)) { return; }
+
+    MoveItemToSlot(Item, TargetSlotIndex);
 }
 
 void URiftInventoryComponent::Server_MergeStacks_Implementation(FGameplayTag SourceContainerTag, int32 SourceSlotIndex, FGameplayTag TargetContainerTag, int32 TargetSlotIndex, int32 Quantity)
 {
-    URiftContainer* SourceContainer = GetContainerByTag(SourceContainerTag);
-    URiftContainer* TargetContainer = GetContainerByTag(TargetContainerTag);
+    URiftContainer* SourceContainer = FindContainerWithItemAtSlot(SourceContainerTag, SourceSlotIndex);
+    URiftContainer* TargetContainer = FindContainerWithItemAtSlot(TargetContainerTag, TargetSlotIndex);
     if (!IsValid(SourceContainer) || !IsValid(TargetContainer)) { return; }
 
     URiftItemInstance* SourceItem = SourceContainer->GetItemAtSlot(SourceSlotIndex);
     URiftItemInstance* TargetItem = TargetContainer->GetItemAtSlot(TargetSlotIndex);
     if (!IsValid(SourceItem) || !IsValid(TargetItem)) { return; }
 
-    URiftFragment_Stack* SourceStack = Cast<URiftFragment_Stack>(
-        SourceItem->FindFragmentByClass(URiftFragment_Stack::StaticClass()));
-    URiftFragment_Stack* TargetStack = Cast<URiftFragment_Stack>(
-        TargetItem->FindFragmentByClass(URiftFragment_Stack::StaticClass()));
+    URiftFragment_Stack* SourceStack = SourceItem->FindFragment<URiftFragment_Stack>();
+    URiftFragment_Stack* TargetStack = TargetItem->FindFragment<URiftFragment_Stack>();
 
     if (!IsValid(SourceStack) || !IsValid(TargetStack) || !SourceStack->CanMergeWith(SourceItem, TargetItem))
     {
@@ -894,8 +836,7 @@ FGuid URiftInventoryComponent::SplitStack(URiftItemInstance* Item, int32 AmountT
         return FGuid();
     }
 
-    URiftFragment_Stack* StackFrag = Cast<URiftFragment_Stack>(
-        Item->FindFragmentByClass(URiftFragment_Stack::StaticClass()));
+    URiftFragment_Stack* StackFrag = Item->FindFragment<URiftFragment_Stack>();
     if (!IsValid(StackFrag))
     {
         return FGuid();
@@ -1046,7 +987,7 @@ URiftItemInstance* URiftInventoryComponent::ReconstructItemInstance(URiftItemDef
     NewItem->InitializeFragmentStatesLocally();
 
     // Override stack quantity with the replicated value if it differs from the default.
-    if (Quantity > 1 && IsValid(NewItem->FindFragmentByClass(URiftFragment_Stack::StaticClass())))
+    if (Quantity > 1 && NewItem->FindFragment<URiftFragment_Stack>())
     {
         TInstancedStruct<FRiftFragmentState> NewState = TInstancedStruct<FRiftFragmentState>::Make<FRiftStackState>();
         FRiftStackState& StackState = NewState.GetMutable<FRiftStackState>();
@@ -1074,8 +1015,7 @@ void URiftInventoryComponent::UpdateItemInstanceQuantity(URiftItemInstance* Item
         return;
     }
 
-    URiftFragment_Stack* StackFrag = Cast<URiftFragment_Stack>(
-        Item->FindFragmentByClass(URiftFragment_Stack::StaticClass()));
+    URiftFragment_Stack* StackFrag = Item->FindFragment<URiftFragment_Stack>();
     if (!StackFrag)
     {
         return;
@@ -1092,6 +1032,9 @@ void URiftInventoryComponent::UpdateItemInstanceQuantity(URiftItemInstance* Item
     Item->SaveStateForFragment(URiftFragment_Stack::StaticClass(), NewState);
 
     Item->bReconstructingLocally = false;
+
+    // Notify client-side listeners (ViewModels, UI) that the stack quantity changed.
+    OnItemEvent.Broadcast(Item, Tag_Rift_Event_Item_StackChanged);
 }
 
 void URiftInventoryComponent::RefreshSlotDescriptor(URiftItemInstance* Item)
@@ -1163,6 +1106,42 @@ URiftContainer* URiftInventoryComponent::FindBestContainerForItem(const URiftIte
     return nullptr;
 }
 
+URiftContainer* URiftInventoryComponent::FindContainerWithItemAtSlot(FGameplayTag ContainerTag, int32 SlotIndex) const
+{
+    for (const FRiftContainerEntry& Entry : Containers.Entries)
+    {
+        if (!IsValid(Entry.Container)) { continue; }
+        if (Entry.Container->GetContainerTag() != ContainerTag) { continue; }
+        if (IsValid(Entry.Container->GetItemAtSlot(SlotIndex)))
+        {
+            return Entry.Container.Get();
+        }
+    }
+    return nullptr;
+}
+
+int32 URiftInventoryComponent::FinalizeNewItem(URiftItemInstance* NewItem, URiftContainer* Container, int32 RemainingQuantity)
+{
+    NewItem->InitializeFragmentStates();
+
+    URiftFragment_Stack* StackFrag = NewItem->FindFragment<URiftFragment_Stack>();
+    if (StackFrag && RemainingQuantity > 1)
+    {
+        RemainingQuantity = StackFrag->AddQuantity(NewItem, RemainingQuantity - 1);
+    }
+    else
+    {
+        RemainingQuantity--;
+    }
+
+    NewItem->ActivateFragments();
+    RefreshSlotDescriptor(NewItem);
+    BroadcastItemEvent(NewItem, Tag_Rift_Event_Item_Added);
+    OnItemAdded.Broadcast(NewItem, Container);
+
+    return RemainingQuantity;
+}
+
 // ---------------------------------------------------------------------------
 // Drop / Delete Server RPCs
 // ---------------------------------------------------------------------------
@@ -1196,20 +1175,31 @@ static FVector GetDropLocation_Internal(AActor* Actor)
 
 void URiftInventoryComponent::Server_DropItem_Implementation(FGameplayTag ContainerTag, int32 SlotIndex, float ConsolidationRadius, TSubclassOf<ARiftPickup> PickupClass)
 {
-    URiftContainer* Container = GetContainerByTag(ContainerTag);
+    URiftContainer* Container = FindContainerWithItemAtSlot(ContainerTag, SlotIndex);
+    if (!IsValid(Container))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Server_DropItem — no container with tag %s holding an item at slot %d"), *ContainerTag.ToString(), SlotIndex);
+        return;
+    }
+    Server_DropItemByObject(Container, SlotIndex, ConsolidationRadius, PickupClass);
+}
+
+void URiftInventoryComponent::Server_DropItemByObject_Implementation(URiftContainer* Container, int32 SlotIndex, float ConsolidationRadius, TSubclassOf<ARiftPickup> PickupClass)
+{
     if (!IsValid(Container)) { return; }
 
     URiftItemInstance* Item = Container->GetItemAtSlot(SlotIndex);
     if (!IsValid(Item))
     {
+        UE_LOG(LogTemp, Warning, TEXT("Server_DropItemByObject — no item at slot %d in container %s"), SlotIndex, *Container->GetContainerTag().ToString());
         return;
     }
 
-    URiftFragment_Drop* DropFrag = Cast<URiftFragment_Drop>(
-        Item->FindFragmentByClass(URiftFragment_Drop::StaticClass()));
+    URiftFragment_Drop* DropFrag = Item->FindFragment<URiftFragment_Drop>();
 
     if (!DropFrag || !DropFrag->IsDroppable())
     {
+        UE_LOG(LogTemp, Warning, TEXT("Server_DropItemByObject — item '%s' is not droppable (no Drop fragment or bDroppable=false)"), *GetNameSafe(Item->GetDefinition()));
         return;
     }
 
@@ -1224,8 +1214,7 @@ void URiftInventoryComponent::Server_DropItem_Implementation(FGameplayTag Contai
     }
 
     int32 Qty = 1;
-    if (URiftFragment_Stack* StackFrag = Cast<URiftFragment_Stack>(
-            Item->FindFragmentByClass(URiftFragment_Stack::StaticClass())))
+    if (URiftFragment_Stack* StackFrag = Item->FindFragment<URiftFragment_Stack>())
     {
         Qty = StackFrag->GetCurrentQuantity(Item);
     }
@@ -1274,21 +1263,31 @@ void URiftInventoryComponent::Server_DropItem_Implementation(FGameplayTag Contai
 
 void URiftInventoryComponent::Server_DeleteItem_Implementation(FGameplayTag ContainerTag, int32 SlotIndex)
 {
-    URiftContainer* Container = GetContainerByTag(ContainerTag);
+    URiftContainer* Container = FindContainerWithItemAtSlot(ContainerTag, SlotIndex);
+    if (!IsValid(Container))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Server_DeleteItem — no container with tag %s holding an item at slot %d"), *ContainerTag.ToString(), SlotIndex);
+        return;
+    }
+    Server_DeleteItemByObject(Container, SlotIndex);
+}
+
+void URiftInventoryComponent::Server_DeleteItemByObject_Implementation(URiftContainer* Container, int32 SlotIndex)
+{
     if (!IsValid(Container)) { return; }
 
     URiftItemInstance* Item = Container->GetItemAtSlot(SlotIndex);
     if (!IsValid(Item))
     {
+        UE_LOG(LogTemp, Warning, TEXT("Server_DeleteItemByObject — no item at slot %d"), SlotIndex);
         return;
     }
 
-    URiftFragment_Drop* DropFrag = Cast<URiftFragment_Drop>(
-        Item->FindFragmentByClass(URiftFragment_Drop::StaticClass()));
+    URiftFragment_Drop* DropFrag = Item->FindFragment<URiftFragment_Drop>();
 
     if (DropFrag && !DropFrag->IsDeletable())
     {
-        UE_LOG(LogTemp, Warning, TEXT("URiftInventoryComponent::Server_DeleteItem — '%s' is not deletable."),
+        UE_LOG(LogTemp, Warning, TEXT("Server_DeleteItemByObject — '%s' is not deletable."),
             *GetNameSafe(Item->GetDefinition()));
         return;
     }

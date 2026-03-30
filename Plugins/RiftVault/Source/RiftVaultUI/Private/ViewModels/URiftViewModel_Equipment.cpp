@@ -32,40 +32,50 @@ int32 URiftViewModel_Equipment::GetSlotCount() const
 
 URiftItemInstance* URiftViewModel_Equipment::GetItemInSlot(FGameplayTag SlotTag) const
 {
-    for (const FRiftEquipmentSlotViewEntry& Entry : EquipmentSlots)
-    {
-        if (Entry.SlotTag == SlotTag)
-        {
-            return Entry.Item;
-        }
-    }
-    return nullptr;
+    const FRiftEquipmentSlotViewEntry* Entry = FindSlotByTag(SlotTag);
+    return Entry ? Entry->Item.Get() : nullptr;
 }
 
 void URiftViewModel_Equipment::OnItemEquipped(URiftItemInstance* Item, FGameplayTag SlotTag, URiftItemDefinition* ItemDefinition)
 {
-    for (FRiftEquipmentSlotViewEntry& Entry : EquipmentSlots)
+    if (FRiftEquipmentSlotViewEntry* Entry = FindSlotByTag(SlotTag))
     {
-        if (Entry.SlotTag == SlotTag)
-        {
-            Entry.Item = Item;
-            UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(GetEquipmentSlots);
-            return;
-        }
+        Entry->Item = Item;
+        UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(GetEquipmentSlots);
     }
 }
 
 void URiftViewModel_Equipment::OnItemUnequipped(URiftItemInstance* Item, FGameplayTag SlotTag, URiftItemDefinition* ItemDefinition)
 {
+    if (FRiftEquipmentSlotViewEntry* Entry = FindSlotByTag(SlotTag))
+    {
+        Entry->Item = nullptr;
+        UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(GetEquipmentSlots);
+    }
+}
+
+FRiftEquipmentSlotViewEntry* URiftViewModel_Equipment::FindSlotByTag(FGameplayTag SlotTag)
+{
     for (FRiftEquipmentSlotViewEntry& Entry : EquipmentSlots)
     {
         if (Entry.SlotTag == SlotTag)
         {
-            Entry.Item = nullptr;
-            UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(GetEquipmentSlots);
-            return;
+            return &Entry;
         }
     }
+    return nullptr;
+}
+
+const FRiftEquipmentSlotViewEntry* URiftViewModel_Equipment::FindSlotByTag(FGameplayTag SlotTag) const
+{
+    for (const FRiftEquipmentSlotViewEntry& Entry : EquipmentSlots)
+    {
+        if (Entry.SlotTag == SlotTag)
+        {
+            return &Entry;
+        }
+    }
+    return nullptr;
 }
 
 void URiftViewModel_Equipment::BindToEquipmentComponent()

@@ -6,8 +6,9 @@ URiftContainerDefinition_Equipment::URiftContainerDefinition_Equipment()
     DisplayName   = NSLOCTEXT("RiftVault", "EquipmentContainerName", "Equipment");
     ContainerTag  = Tag_Rift_Container_Equipment;
     ContainerType = EContainerType::Equipment;
-    GridWidth     = 1;
-    GridHeight    = 12;
+    LayoutType    = EContainerLayoutType::List;
+    SlotCount     = 12;
+    ColumnCount   = 1;
 
     // Restrict to items that carry the Rift.Item.Trait.Equippable tag.
     // Non-equippable items (consumables, quest items, etc.) will be rejected.

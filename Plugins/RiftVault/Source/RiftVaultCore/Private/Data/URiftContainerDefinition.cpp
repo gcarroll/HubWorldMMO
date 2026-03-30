@@ -8,9 +8,10 @@
 
 URiftContainerDefinition::URiftContainerDefinition()
 {
-    DisplayName = NSLOCTEXT("RiftVault", "DefaultContainerName", "Container");
-    GridWidth  = 5;
-    GridHeight = 4;
+    DisplayName  = NSLOCTEXT("RiftVault", "DefaultContainerName", "Container");
+    LayoutType   = EContainerLayoutType::Grid;
+    SlotCount    = 20;
+    ColumnCount  = 5;
 
     // Default compatibility query accepts any item that has the base Rift.Item tag.
     // Designers can override this to restrict containers to specific item traits.
@@ -54,14 +55,14 @@ EDataValidationResult URiftContainerDefinition::IsDataValid(FDataValidationConte
         Context.AddError(NSLOCTEXT("RiftVault", "MissingContainerTag", "Container Definition is missing a ContainerTag. Set a Rift.Container.* tag."));
     }
 
-    if (GridWidth <= 0)
+    if (SlotCount <= 0)
     {
-        Context.AddError(NSLOCTEXT("RiftVault", "InvalidGridWidth", "Container GridWidth must be at least 1."));
+        Context.AddError(NSLOCTEXT("RiftVault", "InvalidSlotCount", "Container SlotCount must be at least 1."));
     }
 
-    if (GridHeight <= 0)
+    if (LayoutType == EContainerLayoutType::Grid && ColumnCount <= 0)
     {
-        Context.AddError(NSLOCTEXT("RiftVault", "InvalidGridHeight", "Container GridHeight must be at least 1."));
+        Context.AddError(NSLOCTEXT("RiftVault", "InvalidColumnCount", "Container ColumnCount must be at least 1 for Grid layout."));
     }
 
     if (ItemCompatibilityQuery.IsEmpty())

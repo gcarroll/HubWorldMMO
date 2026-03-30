@@ -250,6 +250,15 @@ private:
     FRiftSlotList Slots;
 
     /**
+     * Updates a slot's descriptor fields (Item, ItemDefinition, Quantity) and marks
+     * the entry dirty for replication. Passing nullptr clears the slot.
+     *
+     * @param SlotIndex  The slot to update.
+     * @param Item       The item to write, or nullptr to clear.
+     */
+    void RefreshSlotEntry(int32 SlotIndex, URiftItemInstance* Item);
+
+    /**
      * Adds an item to the first available slot.
      * Scans for null entries first; appends if the array hasn't reached Capacity yet.
      * Private — all external additions go through URiftInventoryComponent.

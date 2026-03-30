@@ -110,8 +110,7 @@ bool URiftPickupComponent::TryCollect_Implementation(AActor* Collector)
                     if (!Def) continue;
 
                     int32 Qty = 1;
-                    if (URiftFragment_Stack* StackFrag = Cast<URiftFragment_Stack>(
-                            Item->FindFragmentByClass(URiftFragment_Stack::StaticClass())))
+                    if (URiftFragment_Stack* StackFrag = Item->FindFragment<URiftFragment_Stack>())
                     {
                         Qty = StackFrag->GetCurrentQuantity(Item);
                     }

@@ -145,6 +145,10 @@ private:
      */
     TWeakObjectPtr<URiftEquipmentComponent> EquipmentComponent;
 
+    /** Returns a pointer to the slot entry matching the given tag, or nullptr if not found. */
+    FRiftEquipmentSlotViewEntry* FindSlotByTag(FGameplayTag SlotTag);
+    const FRiftEquipmentSlotViewEntry* FindSlotByTag(FGameplayTag SlotTag) const;
+
     /** Subscribes to OnItemEquipped and OnItemUnequipped delegates. No-op if component is invalid. */
     void BindToEquipmentComponent();
 

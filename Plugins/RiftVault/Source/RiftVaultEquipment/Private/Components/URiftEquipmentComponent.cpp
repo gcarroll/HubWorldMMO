@@ -147,12 +147,20 @@ bool URiftEquipmentComponent::EquipItem(URiftItemInstance* Item, FGameplayTag Sl
     // true and OnInventoryItemMoved will skip re-processing — preventing double equip.
     FinishEquip(Item, SlotTag);
 
-    // Move the item into its per-slot container so the inventory's state matches.
+    // Move the item into the equipment container that accepts this item's slot tag.
+    // Multiple containers may share Tag_Rift_Container_Equipment (one per slot type),
+    // so we iterate all containers to find the one whose tag filter matches this item.
     if (LinkedInventory.IsValid())
     {
-        if (URiftContainer* SlotContainer = LinkedInventory->GetContainerByTag(SlotTag))
+        for (URiftContainer* Container : LinkedInventory->GetAllContainers())
         {
-            LinkedInventory->MoveItemToContainer(Item, SlotContainer);
+            if (IsValid(Container)
+                && Container->GetContainerTag() == Tag_Rift_Container_Equipment
+                && Container->CanAcceptItem(Item))
+            {
+                LinkedInventory->MoveItemToContainer(Item, Container);
+                break;
+            }
         }
     }
 
@@ -320,6 +328,9 @@ void URiftEquipmentComponent::OnInventoryReady(bool bSuccess)
     // React to items being dragged directly into or out of slot containers via the UI,
     // bypassing the explicit EquipItem / UnequipItem API.
     LinkedInventory->OnItemMoved.AddDynamic(this, &URiftEquipmentComponent::OnInventoryItemMoved);
+
+    // Auto-equip items that are added to the inventory (e.g. picked up) when their slot is empty.
+    LinkedInventory->OnItemAdded.AddDynamic(this, &URiftEquipmentComponent::OnInventoryItemAdded);
     UE_LOG(LogTemp, Warning, TEXT("URiftEquipmentComponent::OnInventoryReady — Bound to OnItemMoved. SupportedSlots: %d"), SupportedSlots.Num());
 
     // Auto-grant the equip/unequip abilities so Blueprint and C++ callers can send
@@ -406,6 +417,26 @@ void URiftEquipmentComponent::OnInventoryItemEvent(URiftItemInstance* Item, FGam
     }
 }
 
+void URiftEquipmentComponent::OnInventoryItemAdded(URiftItemInstance* Item, URiftContainer* Container)
+{
+    if (!bAutoEquipOnPickup || !IsValid(Item))
+    {
+        return;
+    }
+
+    const URiftFragment_Equippable* EquipFrag = Item->FindFragment<URiftFragment_Equippable>();
+    if (!EquipFrag)
+    {
+        return;
+    }
+
+    const FGameplayTag SlotTag = EquipFrag->GetEquipmentSlotTag();
+    if (SlotTag.IsValid() && IsSlotSupported(SlotTag) && !IsSlotOccupied(SlotTag))
+    {
+        EquipItem(Item, SlotTag);
+    }
+}
+
 void URiftEquipmentComponent::OnInventoryItemMoved(URiftItemInstance* Item,
     URiftContainer* FromContainer, URiftContainer* ToContainer)
 {
@@ -413,11 +444,6 @@ void URiftEquipmentComponent::OnInventoryItemMoved(URiftItemInstance* Item,
     {
         return;
     }
-
-    UE_LOG(LogTemp, Warning, TEXT("URiftEquipmentComponent::OnInventoryItemMoved — Item: %s, From: %s, To: %s"),
-        *GetNameSafe(Item),
-        IsValid(FromContainer) ? *FromContainer->GetContainerTag().ToString() : TEXT("NULL"),
-        IsValid(ToContainer)   ? *ToContainer->GetContainerTag().ToString()   : TEXT("NULL"));
 
     // --- Equip path: item moved INTO the equipment container or a per-slot container ---
     // Supports two layouts:

@@ -8,6 +8,7 @@
 #include "URiftViewModel_ItemDisplay.generated.h"
 
 class UTexture2D;
+class URiftInventoryComponent;
 
 UCLASS(BlueprintType, Blueprintable, DisplayName = "Item Display ViewModel")
 class RIFTVAULTUI_API URiftViewModel_ItemDisplay : public URiftViewModel_Fragment
@@ -85,7 +86,15 @@ protected:
 private:
 
     TWeakObjectPtr<URiftItemInstance> ItemInstance;
+    TWeakObjectPtr<URiftInventoryComponent> BoundInventory;
 
     void RefreshFromFragment();
+    void RefreshStackFields();
     void ResetToDefaults();
+
+    void BindToInventoryEvents();
+    void UnbindFromInventoryEvents();
+
+    UFUNCTION()
+    void OnInventoryItemEvent(URiftItemInstance* Item, FGameplayTag EventTag);
 };

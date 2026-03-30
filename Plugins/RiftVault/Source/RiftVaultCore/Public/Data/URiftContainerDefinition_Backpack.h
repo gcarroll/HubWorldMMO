@@ -9,7 +9,7 @@
  *
  * Pre-configured in its C++ constructor with:
  *   - ContainerTag  = Rift.Container.Backpack
- *   - GridWidth     = 5, GridHeight = 8  (40 slots — a typical MMO backpack size)
+ *   - LayoutType = Grid, SlotCount = 40, ColumnCount = 5 (40 slots — a typical MMO backpack size)
  *   - ContainerType = PlayerInventory
  *   - No item-compatibility filter (accepts all item types)
  *

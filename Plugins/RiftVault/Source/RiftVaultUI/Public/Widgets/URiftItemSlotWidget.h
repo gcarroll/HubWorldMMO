@@ -75,7 +75,7 @@ public:
 
     /**
      * Initialises the slot's container and index without setting an item.
-     * Called by URiftInventoryGridWidget for every slot (empty or occupied) so
+     * Called by URiftContainerWidget for every slot (empty or occupied) so
      * the drop handler always knows which container and slot index to target.
      */
     UFUNCTION(BlueprintCallable, BlueprintCosmetic, Category = "RiftVault|Widgets|Item Slot")

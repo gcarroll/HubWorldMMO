@@ -17,8 +17,7 @@ bool URiftWorldDropZoneWidget::NativeOnDrop(const FGeometry& InGeometry,
 
     URiftItemInstance* Item = RiftOp->ItemInstance;
 
-    URiftFragment_Drop* DropFrag = Cast<URiftFragment_Drop>(
-        Item->FindFragmentByClass(URiftFragment_Drop::StaticClass()));
+    URiftFragment_Drop* DropFrag = Item->FindFragment<URiftFragment_Drop>();
 
     const bool bCanDrop = DropFrag && DropFrag->IsDroppable();
 
@@ -42,8 +41,8 @@ bool URiftWorldDropZoneWidget::NativeOnDrop(const FGeometry& InGeometry,
 
     if (IsValid(InventoryComp) && IsValid(RiftOp->SourceContainer))
     {
-        InventoryComp->Server_DropItem(
-            RiftOp->SourceContainer->GetContainerTag(),
+        InventoryComp->Server_DropItemByObject(
+            RiftOp->SourceContainer,
             RiftOp->SourceSlotIndex,
             ConsolidationRadius,
             PickupClass);

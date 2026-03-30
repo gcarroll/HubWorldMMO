@@ -28,7 +28,6 @@ public class RiftVaultInventory : ModuleRules
         });
 
         AddVersionBasedDependencies(Target);
-
         SetupIrisSupport(Target);
     }
 

@@ -407,6 +407,14 @@ public:
     void Server_MoveItemToContainerAtSlotByObject(URiftContainer* SourceContainer, int32 SourceSlotIndex, URiftContainer* TargetContainer, int32 TargetSlotIndex);
 
     /**
+     * Server RPC — moves an item to a specific slot within the same container.
+     * Uses direct URiftContainer object pointer to eliminate tag-ambiguity when multiple
+     * containers share the same tag (e.g. two Backpack containers).
+     */
+    UFUNCTION(Server, Reliable, BlueprintCallable, Category = "RiftVault|Inventory|Items")
+    void Server_MoveItemToSlotByObject(URiftContainer* Container, int32 SourceSlotIndex, int32 TargetSlotIndex);
+
+    /**
      * Server RPC — merges Quantity units from the source slot into the target slot. Pass -1 for full stack.
      * Uses container tag + slot index as identity (no UObject pointer over the wire).
      */
@@ -431,6 +439,15 @@ public:
     void Server_DropItem(FGameplayTag ContainerTag, int32 SlotIndex, float ConsolidationRadius, TSubclassOf<ARiftPickup> PickupClass);
 
     /**
+     * Server RPC — drops the item using a direct container pointer instead of a tag.
+     * Eliminates tag-ambiguity when multiple containers share a tag.
+     * Preferred over Server_DropItem when the caller already holds the container pointer.
+     */
+    UFUNCTION(Server, Reliable, BlueprintCallable, Category = "RiftVault|Inventory|Items",
+        meta=(AdvancedDisplay="ConsolidationRadius,PickupClass"))
+    void Server_DropItemByObject(URiftContainer* Container, int32 SlotIndex, float ConsolidationRadius, TSubclassOf<ARiftPickup> PickupClass);
+
+    /**
      * Server RPC — permanently removes the item at the given slot from this inventory with no world spawn.
      *
      * The item must have URiftFragment_Drop with bDeletable = true, or have no
@@ -442,6 +459,14 @@ public:
      */
     UFUNCTION(Server, Reliable, BlueprintCallable, Category = "RiftVault|Inventory|Items")
     void Server_DeleteItem(FGameplayTag ContainerTag, int32 SlotIndex);
+
+    /**
+     * Server RPC — deletes the item using a direct container pointer instead of a tag.
+     * Eliminates tag-ambiguity when multiple containers share a tag.
+     * Preferred over Server_DeleteItem when the caller already holds the container pointer.
+     */
+    UFUNCTION(Server, Reliable, BlueprintCallable, Category = "RiftVault|Inventory|Items")
+    void Server_DeleteItemByObject(URiftContainer* Container, int32 SlotIndex);
 
     /**
      * Splits a stackable item into two stacks.
@@ -701,4 +726,27 @@ private:
      * @return  A container that will accept the item, or null if none found.
      */
     URiftContainer* FindBestContainerForItem(const URiftItemInstance* Item) const;
+
+    /**
+     * Finds the container with the given tag that actually holds an item at the specified slot.
+     * Needed because GetContainerByTag returns the first tag match, which breaks when
+     * multiple containers share a tag (e.g. Bag_1 / Bag_2).
+     *
+     * @param ContainerTag  The gameplay tag to match.
+     * @param SlotIndex     The slot that must contain a valid item.
+     * @return  The matching container, or null if no container with that tag has an item at that slot.
+     */
+    URiftContainer* FindContainerWithItemAtSlot(FGameplayTag ContainerTag, int32 SlotIndex) const;
+
+    /**
+     * Initializes a freshly created item: fragment states, stack quantity, activation,
+     * slot descriptor sync, and broadcasts. Returns the remaining quantity (overflow
+     * from stacking, or RemainingQuantity - 1 for non-stackable items).
+     *
+     * @param NewItem            The item to finalize. Must already be placed in a container slot.
+     * @param Container          The container holding the item (for OnItemAdded broadcast).
+     * @param RemainingQuantity  Units still to place. The item consumes as many as it can.
+     * @return  Leftover units that did not fit in this item's stack.
+     */
+    int32 FinalizeNewItem(URiftItemInstance* NewItem, URiftContainer* Container, int32 RemainingQuantity);
 };

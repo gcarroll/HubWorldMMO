@@ -4,6 +4,7 @@
 #include "Engine/DataAsset.h"
 #include "GameplayTagContainer.h"
 #include "Types/EContainerType.h"
+#include "Types/EContainerLayoutType.h"
 #include "URiftContainerDefinition.generated.h"
 
 /**
@@ -82,23 +83,21 @@ public:
     UFUNCTION(BlueprintPure, Category = "RiftVault|Container Definition")
     FORCEINLINE EContainerType GetContainerType() const { return ContainerType; }
 
-    /**
-     * Returns the number of columns in the inventory grid.
-     */
+    /** Returns the layout type (Grid or List) that drives both UI and replication behavior. */
     UFUNCTION(BlueprintPure, Category = "RiftVault|Container Definition")
-    FORCEINLINE int32 GetGridWidth() const { return GridWidth; }
+    FORCEINLINE EContainerLayoutType GetLayoutType() const { return LayoutType; }
+
+    /** Returns the total number of slots in this container. */
+    UFUNCTION(BlueprintPure, Category = "RiftVault|Container Definition")
+    FORCEINLINE int32 GetCapacity() const { return SlotCount; }
 
     /**
-     * Returns the number of rows in the inventory grid.
+     * Returns the number of columns for Grid layout.
+     * Rows are derived automatically: ceil(SlotCount / ColumnCount).
+     * Defaults to 5 if unset. Not meaningful for List layout.
      */
     UFUNCTION(BlueprintPure, Category = "RiftVault|Container Definition")
-    FORCEINLINE int32 GetGridHeight() const { return GridHeight; }
-
-    /**
-     * Returns the total number of slots (GridWidth * GridHeight).
-     */
-    UFUNCTION(BlueprintPure, Category = "RiftVault|Container Definition")
-    FORCEINLINE int32 GetCapacity() const { return GridWidth * GridHeight; }
+    FORCEINLINE int32 GetColumnCount() const { return ColumnCount > 0 ? ColumnCount : 5; }
 
     /**
      * Evaluates whether an item with the given tag container is accepted by this
@@ -160,19 +159,23 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Container Definition")
     EContainerType ContainerType = EContainerType::PlayerInventory;
 
-    /**
-     * Number of columns in this container's inventory grid.
-     * Combined with GridHeight, determines the total slot count (GridWidth * GridHeight).
-     */
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Container Definition", meta = (UIMin = 1, ClampMin = 1))
-    int32 GridWidth = 5;
+    /** Whether this container uses a grid or list layout. Drives both UI and replication. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Container Definition")
+    EContainerLayoutType LayoutType = EContainerLayoutType::Grid;
 
     /**
-     * Number of rows in this container's inventory grid.
-     * Combined with GridWidth, determines the total slot count (GridWidth * GridHeight).
+     * Total number of slots in this container.
+     * For Grid layout, rows are derived automatically: ceil(SlotCount / ColumnCount).
      */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Container Definition", meta = (UIMin = 1, ClampMin = 1))
-    int32 GridHeight = 4;
+    int32 SlotCount = 20;
+
+    /**
+     * Number of columns for Grid layout. Rows are derived: ceil(SlotCount / ColumnCount).
+     * Defaults to 5 if unset. Not used by List layout.
+     */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Container Definition", meta = (UIMin = 1, ClampMin = 1, EditCondition = "LayoutType == EContainerLayoutType::Grid"))
+    int32 ColumnCount = 5;
 
     /**
      * Gameplay tag query that gates which items this container will accept.

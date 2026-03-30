@@ -108,10 +108,6 @@ void URiftItemSlotWidget::ClearItem()
 
 FReply URiftItemSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-    UE_LOG(LogTemp, Warning, TEXT("URiftItemSlotWidget::NativeOnMouseButtonDown — HasItem: %s, Button: %s"),
-        HasItem() ? TEXT("true") : TEXT("false"),
-        *InMouseEvent.GetEffectingButton().ToString());
-
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && HasItem())
     {
         return UWidgetBlueprintLibrary::DetectDragIfPressed(InMouseEvent, this, EKeys::LeftMouseButton).NativeReply;
@@ -121,8 +117,6 @@ FReply URiftItemSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry,
 
 void URiftItemSlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation)
 {
-    UE_LOG(LogTemp, Warning, TEXT("URiftItemSlotWidget::NativeOnDragDetected — HasItem: %s"), HasItem() ? TEXT("true") : TEXT("false"));
-
     if (!HasItem())
     {
         return;
@@ -191,29 +185,15 @@ void URiftItemSlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, cons
         OutOperation->Pivot = EDragPivot::MouseDown;
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("URiftItemSlotWidget::NativeOnDragDetected — Operation created: %s"),
-        IsValid(OutOperation) ? TEXT("true") : TEXT("false"));
 }
 
 bool URiftItemSlotWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
-    UE_LOG(LogTemp, Warning, TEXT("URiftItemSlotWidget::NativeOnDrop — SlotIndex: %d, Container valid: %s, HasItem: %s"),
-        SlotIndex,
-        Container.IsValid() ? TEXT("true") : TEXT("false"),
-        HasItem() ? TEXT("true") : TEXT("false"));
-
     URiftDragDropOperation* RiftOperation = Cast<URiftDragDropOperation>(InOperation);
     if (!IsValid(RiftOperation))
     {
-        UE_LOG(LogTemp, Warning, TEXT("URiftItemSlotWidget::NativeOnDrop — Cast to URiftDragDropOperation failed. Operation class: %s"),
-            InOperation ? *InOperation->GetClass()->GetName() : TEXT("null"));
         return false;
     }
-
-    UE_LOG(LogTemp, Warning, TEXT("URiftItemSlotWidget::NativeOnDrop — Cast succeeded. SourceContainer: %s, SourceSlot: %d, Item: %s"),
-        IsValid(RiftOperation->SourceContainer) ? *RiftOperation->SourceContainer->GetContainerTag().ToString() : TEXT("null"),
-        RiftOperation->SourceSlotIndex,
-        IsValid(RiftOperation->ItemInstance) ? *GetNameSafe(RiftOperation->ItemInstance) : TEXT("null"));
 
     // Call _Implementation directly to bypass BlueprintNativeEvent dispatch.
     // A Blueprint subclass with an OnItemDropped stub (even an empty one) would
@@ -256,8 +236,7 @@ void URiftItemSlotWidget::NativeOnDragCancelled(const FDragDropEvent& InDragDrop
     URiftDragDropOperation* RiftOp = Cast<URiftDragDropOperation>(InOperation);
     if (!IsValid(RiftOp) || !IsValid(RiftOp->ItemInstance)) return;
 
-    URiftFragment_Drop* DropFrag = Cast<URiftFragment_Drop>(
-        RiftOp->ItemInstance->FindFragmentByClass(URiftFragment_Drop::StaticClass()));
+    URiftFragment_Drop* DropFrag = RiftOp->ItemInstance->FindFragment<URiftFragment_Drop>();
 
     if (DropFrag && DropFrag->IsDroppable())
     {
@@ -295,11 +274,8 @@ void URiftItemSlotWidget::OnItemDropped_Implementation(URiftDragDropOperation* O
         URiftItemInstance* TargetItem = ItemInstance.Get();
 
         // Check if we should merge stacks instead of swapping.
-        URiftFragment_Stack* DraggedStackFrag = Cast<URiftFragment_Stack>(
-            DraggedItem->FindFragmentByClass(URiftFragment_Stack::StaticClass()));
-
-        URiftFragment_Stack* TargetStackFrag = Cast<URiftFragment_Stack>(
-            TargetItem->FindFragmentByClass(URiftFragment_Stack::StaticClass()));
+        URiftFragment_Stack* DraggedStackFrag = DraggedItem->FindFragment<URiftFragment_Stack>();
+        URiftFragment_Stack* TargetStackFrag = TargetItem->FindFragment<URiftFragment_Stack>();
 
         const bool bCanMerge = IsValid(DraggedStackFrag)
             && IsValid(TargetStackFrag)
@@ -314,8 +290,8 @@ void URiftItemSlotWidget::OnItemDropped_Implementation(URiftDragDropOperation* O
         }
         else if (bSameContainer)
         {
-            InventoryComponent->Server_MoveItemToSlot(
-                Operation->SourceContainer->GetContainerTag(),
+            InventoryComponent->Server_MoveItemToSlotByObject(
+                Operation->SourceContainer,
                 Operation->SourceSlotIndex,
                 SlotIndex);
         }
@@ -330,8 +306,8 @@ void URiftItemSlotWidget::OnItemDropped_Implementation(URiftDragDropOperation* O
     {
         if (bSameContainer)
         {
-            InventoryComponent->Server_MoveItemToSlot(
-                Operation->SourceContainer->GetContainerTag(),
+            InventoryComponent->Server_MoveItemToSlotByObject(
+                Operation->SourceContainer,
                 Operation->SourceSlotIndex,
                 SlotIndex);
         }
@@ -370,8 +346,8 @@ void URiftItemSlotWidget::OnDragCancelledOutside_Implementation(URiftDragDropOpe
 
     if (IsValid(InventoryComp) && IsValid(Operation->SourceContainer))
     {
-        InventoryComp->Server_DropItem(
-            Operation->SourceContainer->GetContainerTag(),
+        InventoryComp->Server_DropItemByObject(
+            Operation->SourceContainer,
             Operation->SourceSlotIndex,
             200.f,
             nullptr);

@@ -9,7 +9,7 @@
  *
  * Pre-configured in its C++ constructor with:
  *   - ContainerTag  = Rift.Container.Ground
- *   - Capacity      = 10x10 = 100 slots (accepts any number of dropped item stacks)
+ *   - LayoutType = Grid, SlotCount = 100, ColumnCount = 10 (accepts any number of dropped item stacks)
  *   - No item-compatibility filter (accepts all item types)
  *
  * Used by ARiftPickup::DropInventory.

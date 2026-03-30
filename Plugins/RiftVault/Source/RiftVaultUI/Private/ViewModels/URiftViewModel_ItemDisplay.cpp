@@ -1,19 +1,25 @@
 #include "ViewModels/URiftViewModel_ItemDisplay.h"
 
+#include "Components/URiftInventoryComponent.h"
 #include "GameFramework/Fragments/URiftFragment_Display.h"
 #include "GameFramework/Fragments/URiftFragment_Stack.h"
+#include "Tags/RiftVaultTags.h"
 
 void URiftViewModel_ItemDisplay::ShutdownViewModel_Implementation()
 {
+    UnbindFromInventoryEvents();
     ClearItemInstance();
 }
 
 void URiftViewModel_ItemDisplay::SetItemInstance_Implementation(URiftItemInstance* NewItemInstance)
 {
+    UnbindFromInventoryEvents();
+
     ItemInstance = NewItemInstance;
 
     if (ItemInstance.IsValid())
     {
+        BindToInventoryEvents();
         RefreshFromFragment();
     }
     else
@@ -26,6 +32,7 @@ void URiftViewModel_ItemDisplay::SetItemInstance_Implementation(URiftItemInstanc
 
 void URiftViewModel_ItemDisplay::ClearItemInstance_Implementation()
 {
+    UnbindFromInventoryEvents();
     ItemInstance.Reset();
     ResetToDefaults();
     UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(HasItem);
@@ -85,9 +92,7 @@ void URiftViewModel_ItemDisplay::RefreshFromFragment()
         return;
     }
 
-    // Use StaticClass form to avoid MSVC C2275 template parse errors
-    const URiftFragment_Display* Fragment = Cast<URiftFragment_Display>(
-        ItemInstance->FindFragmentByClass(URiftFragment_Display::StaticClass()));
+    const URiftFragment_Display* Fragment = ItemInstance->FindFragment<URiftFragment_Display>();
 
     if (!IsValid(Fragment))
     {
@@ -101,10 +106,17 @@ void URiftViewModel_ItemDisplay::RefreshFromFragment()
     UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(GetIconBrush);
     UE_MVVM_SET_PROPERTY_VALUE(RarityTag, Fragment->GetRarityTag());
 
-    // Read quantity and visibility from the Stack fragment if present.
-    // Non-stackable items have no Stack fragment — quantity defaults to 1, count hidden.
-    const URiftFragment_Stack* StackFragment = Cast<URiftFragment_Stack>(
-        ItemInstance->FindFragmentByClass(URiftFragment_Stack::StaticClass()));
+    RefreshStackFields();
+}
+
+void URiftViewModel_ItemDisplay::RefreshStackFields()
+{
+    if (!ItemInstance.IsValid())
+    {
+        return;
+    }
+
+    const URiftFragment_Stack* StackFragment = ItemInstance->FindFragment<URiftFragment_Stack>();
 
     const int32 Quantity = IsValid(StackFragment)
         ? StackFragment->GetCurrentQuantity(ItemInstance.Get())
@@ -114,6 +126,38 @@ void URiftViewModel_ItemDisplay::RefreshFromFragment()
 
     UE_MVVM_SET_PROPERTY_VALUE(CurrentQuantity, Quantity);
     UE_MVVM_SET_PROPERTY_VALUE(bIsStackCountVisible, bShowCount);
+}
+
+void URiftViewModel_ItemDisplay::BindToInventoryEvents()
+{
+    if (!ItemInstance.IsValid())
+    {
+        return;
+    }
+
+    URiftInventoryComponent* InvComp = ItemInstance->GetTypedOuter<URiftInventoryComponent>();
+    if (IsValid(InvComp))
+    {
+        BoundInventory = InvComp;
+        InvComp->OnItemEvent.AddDynamic(this, &URiftViewModel_ItemDisplay::OnInventoryItemEvent);
+    }
+}
+
+void URiftViewModel_ItemDisplay::UnbindFromInventoryEvents()
+{
+    if (BoundInventory.IsValid())
+    {
+        BoundInventory->OnItemEvent.RemoveDynamic(this, &URiftViewModel_ItemDisplay::OnInventoryItemEvent);
+        BoundInventory.Reset();
+    }
+}
+
+void URiftViewModel_ItemDisplay::OnInventoryItemEvent(URiftItemInstance* Item, FGameplayTag EventTag)
+{
+    if (Item == ItemInstance.Get() && EventTag == Tag_Rift_Event_Item_StackChanged)
+    {
+        RefreshStackFields();
+    }
 }
 
 void URiftViewModel_ItemDisplay::ResetToDefaults()

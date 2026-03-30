@@ -16,8 +16,7 @@ bool URiftDeleteZoneWidget::NativeOnDrop(const FGeometry& InGeometry,
 
     URiftItemInstance* Item = RiftOp->ItemInstance;
 
-    URiftFragment_Drop* DropFrag = Cast<URiftFragment_Drop>(
-        Item->FindFragmentByClass(URiftFragment_Drop::StaticClass()));
+    URiftFragment_Drop* DropFrag = Item->FindFragment<URiftFragment_Drop>();
 
     const bool bCanDelete = !DropFrag || DropFrag->IsDeletable();
 
@@ -41,8 +40,8 @@ bool URiftDeleteZoneWidget::NativeOnDrop(const FGeometry& InGeometry,
 
     if (IsValid(InventoryComp) && IsValid(RiftOp->SourceContainer))
     {
-        InventoryComp->Server_DeleteItem(
-            RiftOp->SourceContainer->GetContainerTag(),
+        InventoryComp->Server_DeleteItemByObject(
+            RiftOp->SourceContainer,
             RiftOp->SourceSlotIndex);
         OnItemDeleted(Item);
     }

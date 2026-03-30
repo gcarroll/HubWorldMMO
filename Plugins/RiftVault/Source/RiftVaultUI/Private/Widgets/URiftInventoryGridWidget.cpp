@@ -1,8 +1,9 @@
 #include "Widgets/URiftInventoryGridWidget.h"
 
+#include "DragDrop/URiftDragDropOperation.h"
 #include "Components/PanelWidget.h"
-#include "Components/UniformGridPanel.h"
 #include "Components/UniformGridSlot.h"
+#include "Components/GridSlot.h"
 #include "Components/URiftInventoryComponent.h"
 #include "Data/URiftContainerDefinition.h"
 #include "GameFramework/Containers/URiftContainer.h"
@@ -10,14 +11,15 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
 #include "Interfaces/IRiftInventoryInterface.h"
+#include "Types/EContainerLayoutType.h"
 #include "Widgets/URiftItemSlotWidget.h"
 
-URiftInventoryGridWidget::URiftInventoryGridWidget(const FObjectInitializer& ObjectInitializer)
+URiftContainerWidget::URiftContainerWidget(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
 {
 }
 
-void URiftInventoryGridWidget::NativeConstruct()
+void URiftContainerWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
@@ -49,7 +51,7 @@ void URiftInventoryGridWidget::NativeConstruct()
     }
 }
 
-void URiftInventoryGridWidget::SetInventoryOwner(UObject* InventoryOwner)
+void URiftContainerWidget::SetInventoryOwner(UObject* InventoryOwner)
 {
     URiftInventoryComponent* NewComponent = nullptr;
 
@@ -67,9 +69,9 @@ void URiftInventoryGridWidget::SetInventoryOwner(UObject* InventoryOwner)
     // Tear down any previous binding.
     UnbindFromInventory();
     SlotWidgets.Empty();
-    if (IsValid(ItemGrid))
+    if (UPanelWidget* ItemPanel = GetItemPanel())
     {
-        ItemGrid->ClearChildren();
+        ItemPanel->ClearChildren();
     }
 
     InventoryComponent = NewComponent;
@@ -81,17 +83,17 @@ void URiftInventoryGridWidget::SetInventoryOwner(UObject* InventoryOwner)
 
     BindToInventory();
     InventoryComponent->WaitForInitialized(
-        FOnRiftInventoryInitializedDelegate::CreateUObject(this, &URiftInventoryGridWidget::OnInventoryInitialized));
+        FOnRiftInventoryInitializedDelegate::CreateUObject(this, &URiftContainerWidget::OnInventoryInitialized));
 }
 
-void URiftInventoryGridWidget::NativeDestruct()
+void URiftContainerWidget::NativeDestruct()
 {
     UnbindFromInventory();
     SlotWidgets.Empty();
     Super::NativeDestruct();
 }
 
-void URiftInventoryGridWidget::OnInventoryInitialized(bool bSuccess)
+void URiftContainerWidget::OnInventoryInitialized(bool bSuccess)
 {
     if (!bSuccess || !InventoryComponent.IsValid())
     {
@@ -102,7 +104,7 @@ void URiftInventoryGridWidget::OnInventoryInitialized(bool bSuccess)
     BuildSlots();
 }
 
-void URiftInventoryGridWidget::OnItemAdded(URiftItemInstance* Item, URiftContainer* Container)
+void URiftContainerWidget::OnItemAdded(URiftItemInstance* Item, URiftContainer* Container)
 {
     if (!IsValid(Item) || !IsValid(Container) || !IsValid(ContainerDefinition))
     {
@@ -121,15 +123,25 @@ void URiftInventoryGridWidget::OnItemAdded(URiftItemInstance* Item, URiftContain
         return;
     }
 
-    // The item already occupies a slot — find which one and update that widget.
     const int32 SlotIndex = TrackedContainer->GetSlotIndexOfItem(Item);
-    if (SlotWidgets.IsValidIndex(SlotIndex) && IsValid(SlotWidgets[SlotIndex]))
+    if (SlotIndex == INDEX_NONE)
+    {
+        return;
+    }
+
+    if (ContainerDefinition->GetLayoutType() == EContainerLayoutType::List)
+    {
+        // List: rebuild entirely so order stays correct even when PostReplicatedChange
+        // fires multiple OnItemAdded events back-to-back (e.g. after a same-container swap).
+        BuildSlots();
+    }
+    else if (SlotWidgets.IsValidIndex(SlotIndex) && IsValid(SlotWidgets[SlotIndex]))
     {
         SlotWidgets[SlotIndex]->SetItem(Item, TrackedContainer.Get(), SlotIndex);
     }
 }
 
-void URiftInventoryGridWidget::OnItemRemoved(URiftItemInstance* Item, URiftContainer* Container)
+void URiftContainerWidget::OnItemRemoved(URiftItemInstance* Item, URiftContainer* Container)
 {
     if (!IsValid(Item) || !IsValid(Container) || !IsValid(ContainerDefinition))
     {
@@ -142,19 +154,29 @@ void URiftInventoryGridWidget::OnItemRemoved(URiftItemInstance* Item, URiftConta
         return;
     }
 
-    // Find whichever slot widget is showing this item and clear it back to empty.
-    for (URiftItemSlotWidget* SlotWidget : SlotWidgets)
+    if (ContainerDefinition->GetLayoutType() == EContainerLayoutType::List)
     {
-        if (IsValid(SlotWidget) && SlotWidget->GetItemInstance() == Item)
+        // List: rebuild entirely so order stays correct even when PostReplicatedChange
+        // fires multiple OnItemRemoved events back-to-back (e.g. after a same-container swap).
+        BuildSlots();
+    }
+    else
+    {
+        // Grid: clear the slot widget back to empty so the cell remains a drop target.
+        for (URiftItemSlotWidget* SlotWidget : SlotWidgets)
         {
-            SlotWidget->ClearItem();
-            break;
+            if (IsValid(SlotWidget) && SlotWidget->GetItemInstance() == Item)
+            {
+                SlotWidget->ClearItem();
+                break;
+            }
         }
     }
 }
 
-void URiftInventoryGridWidget::BuildSlots()
+void URiftContainerWidget::BuildSlots()
 {
+    UPanelWidget* ItemGrid = GetItemPanel();
     if (!IsValid(ItemGrid) || !IsValid(ItemSlotWidgetClass) || !InventoryComponent.IsValid() || !IsValid(ContainerDefinition))
     {
         return;
@@ -169,48 +191,71 @@ void URiftInventoryGridWidget::BuildSlots()
         return;
     }
 
-    const int32 GridWidth = ContainerDefinition->GetGridWidth();
-    const int32 Capacity  = ContainerDefinition->GetCapacity();
+    const int32 Capacity             = ContainerDefinition->GetCapacity();
+    const EContainerLayoutType Layout = ContainerDefinition->GetLayoutType();
+    const int32 Columns              = ContainerDefinition->GetColumnCount();
 
-    // Create one slot widget per slot (empty and occupied alike).
-    // The slot index is the canonical position — row and column are derived from it.
-    for (int32 SlotIndex = 0; SlotIndex < Capacity; ++SlotIndex)
+    if (Layout == EContainerLayoutType::List)
     {
-        URiftItemSlotWidget* SlotWidget = CreateWidget<URiftItemSlotWidget>(GetOwningPlayer(), ItemSlotWidgetClass);
-        if (!IsValid(SlotWidget))
+        // List: only create widgets for occupied slots — the list grows as items are added.
+        for (int32 SlotIndex = 0; SlotIndex < Capacity; ++SlotIndex)
         {
-            // Keep a null entry so SlotWidgets indices stay aligned with container slots.
-            SlotWidgets.Add(nullptr);
-            continue;
+            URiftItemInstance* Item = TrackedContainer->GetItemAtSlot(SlotIndex);
+            if (!IsValid(Item))
+            {
+                continue;
+            }
+            AppendListSlot(Item, SlotIndex);
         }
-
-        SlotWidgets.Add(SlotWidget);
-
-        const int32 Column = SlotIndex % GridWidth;
-        const int32 Row    = SlotIndex / GridWidth;
-
-        UUniformGridSlot* GridSlot = Cast<UUniformGridSlot>(ItemGrid->AddChild(SlotWidget));
-        if (IsValid(GridSlot))
+    }
+    else
+    {
+        // Grid: create one widget per slot (empty and occupied alike) so every cell is a drop target.
+        for (int32 SlotIndex = 0; SlotIndex < Capacity; ++SlotIndex)
         {
-            GridSlot->SetColumn(Column);
-            GridSlot->SetRow(Row);
-            GridSlot->SetHorizontalAlignment(HAlign_Fill);
-            GridSlot->SetVerticalAlignment(VAlign_Fill);
-        }
+            URiftItemSlotWidget* SlotWidget = CreateWidget<URiftItemSlotWidget>(GetOwningPlayer(), ItemSlotWidgetClass);
+            if (!IsValid(SlotWidget))
+            {
+                SlotWidgets.Add(nullptr);
+                continue;
+            }
 
-        // Always initialise container + index so empty slots can accept drops.
-        SlotWidget->InitSlot(TrackedContainer.Get(), SlotIndex);
+            SlotWidgets.Add(SlotWidget);
 
-        // If an item already occupies this slot (e.g. loaded from save), wire it up now.
-        URiftItemInstance* Item = TrackedContainer->GetItemAtSlot(SlotIndex);
-        if (IsValid(Item))
-        {
-            SlotWidget->SetItem(Item, TrackedContainer.Get(), SlotIndex);
+            UPanelSlot* PanelSlot = ItemGrid->AddChild(SlotWidget);
+            if (IsValid(PanelSlot))
+            {
+                const int32 Column = SlotIndex % Columns;
+                const int32 Row    = SlotIndex / Columns;
+
+                if (UUniformGridSlot* UGSlot = Cast<UUniformGridSlot>(PanelSlot))
+                {
+                    UGSlot->SetColumn(Column);
+                    UGSlot->SetRow(Row);
+                    UGSlot->SetHorizontalAlignment(HAlign_Fill);
+                    UGSlot->SetVerticalAlignment(VAlign_Fill);
+                }
+                else if (UGridSlot* GSlot = Cast<UGridSlot>(PanelSlot))
+                {
+                    GSlot->SetColumn(Column);
+                    GSlot->SetRow(Row);
+                    GSlot->SetHorizontalAlignment(HAlign_Fill);
+                    GSlot->SetVerticalAlignment(VAlign_Fill);
+                }
+            }
+
+            SlotWidget->InitSlot(TrackedContainer.Get(), SlotIndex);
+
+            URiftItemInstance* Item = TrackedContainer->GetItemAtSlot(SlotIndex);
+            if (IsValid(Item))
+            {
+                SlotWidget->SetItem(Item, TrackedContainer.Get(), SlotIndex);
+            }
         }
     }
 }
 
-void URiftInventoryGridWidget::OnItemMoved(URiftItemInstance* Item, URiftContainer* FromContainer, URiftContainer* ToContainer)
+void URiftContainerWidget::OnItemMoved(URiftItemInstance* Item, URiftContainer* FromContainer, URiftContainer* ToContainer)
 {
     if (!TrackedContainer.IsValid() || !IsValid(ContainerDefinition))
     {
@@ -226,8 +271,15 @@ void URiftInventoryGridWidget::OnItemMoved(URiftItemInstance* Item, URiftContain
         return;
     }
 
-    // Only refresh slots whose content has changed since the last widget update.
-    // Skipping unchanged slots avoids redundant WireViewModel calls between drags.
+    if (ContainerDefinition->GetLayoutType() == EContainerLayoutType::List)
+    {
+        // Any list change (reorder, cross-container in, cross-container out) — rebuild
+        // entirely so slot order always matches the authoritative container state.
+        BuildSlots();
+        return;
+    }
+
+    // Grid: refresh only slots whose content changed.
     for (int32 i = 0; i < SlotWidgets.Num(); ++i)
     {
         URiftItemSlotWidget* SlotWidget = SlotWidgets[i];
@@ -239,7 +291,7 @@ void URiftInventoryGridWidget::OnItemMoved(URiftItemInstance* Item, URiftContain
         URiftItemInstance* ItemAtSlot = TrackedContainer->GetItemAtSlot(i);
         if (SlotWidget->GetItemInstance() == ItemAtSlot)
         {
-            continue; // No change — skip.
+            continue;
         }
 
         if (IsValid(ItemAtSlot))
@@ -253,32 +305,32 @@ void URiftInventoryGridWidget::OnItemMoved(URiftItemInstance* Item, URiftContain
     }
 }
 
-void URiftInventoryGridWidget::BindToInventory()
+void URiftContainerWidget::BindToInventory()
 {
     if (!InventoryComponent.IsValid())
     {
         return;
     }
 
-    InventoryComponent->OnItemAdded.AddDynamic(this, &URiftInventoryGridWidget::OnItemAdded);
-    InventoryComponent->OnItemRemoved.AddDynamic(this, &URiftInventoryGridWidget::OnItemRemoved);
-    InventoryComponent->OnItemMoved.AddDynamic(this, &URiftInventoryGridWidget::OnItemMoved);
+    InventoryComponent->OnItemAdded.AddDynamic(this, &URiftContainerWidget::OnItemAdded);
+    InventoryComponent->OnItemRemoved.AddDynamic(this, &URiftContainerWidget::OnItemRemoved);
+    InventoryComponent->OnItemMoved.AddDynamic(this, &URiftContainerWidget::OnItemMoved);
 }
 
-void URiftInventoryGridWidget::UnbindFromInventory()
+void URiftContainerWidget::UnbindFromInventory()
 {
     if (!InventoryComponent.IsValid())
     {
         return;
     }
 
-    InventoryComponent->OnItemAdded.RemoveDynamic(this, &URiftInventoryGridWidget::OnItemAdded);
-    InventoryComponent->OnItemRemoved.RemoveDynamic(this, &URiftInventoryGridWidget::OnItemRemoved);
-    InventoryComponent->OnItemMoved.RemoveDynamic(this, &URiftInventoryGridWidget::OnItemMoved);
-    InventoryComponent->OnInventoryInitialized.RemoveDynamic(this, &URiftInventoryGridWidget::OnInventoryInitialized);
+    InventoryComponent->OnItemAdded.RemoveDynamic(this, &URiftContainerWidget::OnItemAdded);
+    InventoryComponent->OnItemRemoved.RemoveDynamic(this, &URiftContainerWidget::OnItemRemoved);
+    InventoryComponent->OnItemMoved.RemoveDynamic(this, &URiftContainerWidget::OnItemMoved);
+    InventoryComponent->OnInventoryInitialized.RemoveDynamic(this, &URiftContainerWidget::OnInventoryInitialized);
 }
 
-int32 URiftInventoryGridWidget::FindSlotIndexOfItem(URiftItemInstance* Item) const
+int32 URiftContainerWidget::FindSlotIndexOfItem(URiftItemInstance* Item) const
 {
     if (!TrackedContainer.IsValid() || !IsValid(Item))
     {
@@ -286,4 +338,72 @@ int32 URiftInventoryGridWidget::FindSlotIndexOfItem(URiftItemInstance* Item) con
     }
 
     return TrackedContainer->GetSlotIndexOfItem(Item);
+}
+
+bool URiftContainerWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+    URiftDragDropOperation* RiftOp = Cast<URiftDragDropOperation>(InOperation);
+    if (!RiftOp || !TrackedContainer.IsValid() || !InventoryComponent.IsValid() || !IsValid(ContainerDefinition))
+    {
+        return false;
+    }
+
+    // Only handle drops for List containers — Grid slots cover every cell and handle drops themselves.
+    if (ContainerDefinition->GetLayoutType() != EContainerLayoutType::List)
+    {
+        return false;
+    }
+
+    // Find the first empty slot within capacity.
+    const int32 Capacity = ContainerDefinition->GetCapacity();
+    int32 TargetSlot = INDEX_NONE;
+    for (int32 i = 0; i < Capacity; ++i)
+    {
+        if (!IsValid(TrackedContainer->GetItemAtSlot(i)))
+        {
+            TargetSlot = i;
+            break;
+        }
+    }
+
+    if (TargetSlot == INDEX_NONE)
+    {
+        return false; // Container full.
+    }
+
+    InventoryComponent->Server_MoveItemToContainerAtSlotByObject(
+        RiftOp->SourceContainer, RiftOp->SourceSlotIndex,
+        TrackedContainer.Get(), TargetSlot);
+
+    return true;
+}
+
+void URiftContainerWidget::AppendListSlot(URiftItemInstance* Item, int32 SlotIndex)
+{
+    UPanelWidget* ItemPanel = GetItemPanel();
+    if (!IsValid(ItemPanel) || !IsValid(ItemSlotWidgetClass) || !TrackedContainer.IsValid())
+    {
+        return;
+    }
+
+    // Grow SlotWidgets to fit this index if needed.
+    if (SlotWidgets.Num() <= SlotIndex)
+    {
+        SlotWidgets.SetNum(SlotIndex + 1);
+    }
+
+    URiftItemSlotWidget* SlotWidget = CreateWidget<URiftItemSlotWidget>(GetOwningPlayer(), ItemSlotWidgetClass);
+    if (!IsValid(SlotWidget))
+    {
+        return;
+    }
+
+    SlotWidgets[SlotIndex] = SlotWidget;
+    ItemPanel->AddChild(SlotWidget);
+    SlotWidget->InitSlot(TrackedContainer.Get(), SlotIndex);
+
+    if (IsValid(Item))
+    {
+        SlotWidget->SetItem(Item, TrackedContainer.Get(), SlotIndex);
+    }
 }

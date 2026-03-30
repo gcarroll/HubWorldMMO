@@ -32,8 +32,7 @@
  * BlueprintAuthorityOnly UFUNCTIONs from Blueprint.
  *
  * Example usage:
- *   URiftFragment_Stack* StackFrag = Cast<URiftFragment_Stack>(
- *       Item->FindFragmentByClass(URiftFragment_Stack::StaticClass()));
+ *   URiftFragment_Stack* StackFrag = Item->FindFragment<URiftFragment_Stack>();
  *   if (StackFrag)
  *   {
  *       int32 Overflow = StackFrag->AddQuantity(Item, 5);

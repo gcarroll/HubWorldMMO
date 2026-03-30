@@ -9,7 +9,7 @@
  *
  * Pre-configured in its C++ constructor with:
  *   - ContainerTag  = Rift.Container.Equipment
- *   - GridWidth     = 1, GridHeight = 12  (12 slots — one per equipment slot)
+ *   - LayoutType = List, SlotCount = 12  (12 slots — one per equipment slot)
  *   - ContainerType = Equipment
  *   - Item filter: only items carrying the Rift.Item.Trait.Equippable tag are accepted
  *

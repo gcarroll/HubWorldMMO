@@ -12,33 +12,35 @@ class URiftContainerDefinition;
 class UPanelWidget;
 
 /**
- * Base class for inventory grid widgets.
+ * Base class for inventory container widgets. Supports both Grid and List layouts
+ * driven by the EContainerLayoutType on the assigned URiftContainerDefinition.
  *
  * Handles all slot management in C++:
  * - Displays one slot widget per slot in the tracked container
- * - Wires delegates so the grid stays in sync as items are added, removed, or moved
- * - Reads container capacity and grid width from ContainerDefinition
+ * - Wires delegates so the widget stays in sync as items are added, removed, or moved
+ * - Reads SlotCount, ColumnCount, and LayoutType from ContainerDefinition
  *
  * Blueprint subclasses must:
  * - Set ItemSlotWidgetClass
  * - Set ContainerDefinition
- * - Bind a UPanelWidget (UniformGridPanel, WrapBox, etc.) to ItemGrid
- * - Call SetInventoryComponent with the component that owns the inventory to display.
- *   This can be on a PlayerState, Pawn, vendor actor, or any other actor — the grid
- *   widget does not assume any particular location.
+ * - Override GetItemPanel and return the panel widget to populate:
+ *     Grid layout — UUniformGridPanel or UGridPanel (row/column set automatically)
+ *     List layout — UVerticalBox, UHorizontalBox, UWrapBox, etc. (AddChild only)
+ * - Call SetInventoryOwner with any actor that implements IRiftInventoryInterface.
  */
-UCLASS(Abstract, DisplayName = "Rift Inventory Grid Widget")
-class RIFTVAULTUI_API URiftInventoryGridWidget : public URiftBaseWidget
+UCLASS(Abstract, DisplayName = "Rift Container Widget")
+class RIFTVAULTUI_API URiftContainerWidget : public URiftBaseWidget
 {
     GENERATED_BODY()
 
 public:
 
-    URiftInventoryGridWidget(const FObjectInitializer& ObjectInitializer);
+    URiftContainerWidget(const FObjectInitializer& ObjectInitializer);
 
     // -- Begin UUserWidget interface
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    virtual bool NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
     // -- End UUserWidget interface
 
     /**
@@ -63,11 +65,12 @@ protected:
     TObjectPtr<URiftContainerDefinition> ContainerDefinition;
 
     /**
-     * The panel to populate with slots. Bind this to any UPanelWidget subclass
-     * in your Blueprint — UniformGridPanel, WrapBox, etc.
+     * Return the panel widget to populate with slots.
+     * Override in Blueprint and return whichever panel you placed in your layout —
+     * UniformGridPanel, WrapBox, VerticalBox, etc. No naming convention required.
      */
-    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-    TObjectPtr<UPanelWidget> ItemGrid;
+    UFUNCTION(BlueprintImplementableEvent, Category = "RiftVault|Grid")
+    UPanelWidget* GetItemPanel() const;
 
     UFUNCTION()
     void OnItemAdded(URiftItemInstance* Item, URiftContainer* Container);
@@ -94,4 +97,5 @@ private:
     void BindToInventory();
     void UnbindFromInventory();
     int32 FindSlotIndexOfItem(URiftItemInstance* Item) const;
+    void AppendListSlot(URiftItemInstance* Item, int32 SlotIndex);
 };

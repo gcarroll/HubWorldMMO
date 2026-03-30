@@ -257,6 +257,15 @@ protected:
     bool bAutoGrantEquipAbilities = true;
 
     /**
+     * If true (default), items picked up or added to the inventory are automatically
+     * equipped when their target equipment slot is empty.
+     * Only applies to items with URiftFragment_Equippable whose slot is supported
+     * and currently unoccupied.
+     */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Equipment")
+    bool bAutoEquipOnPickup = true;
+
+    /**
      * The weapon actor class to spawn when equipping an item that has a WeaponSocketName.
      * Defaults to ARiftWeaponActor (the base class) if left unset.
      * Override per-pawn Blueprint to use a subclass that has custom collision, audio, or VFX.
@@ -330,6 +339,17 @@ private:
      */
     UFUNCTION()
     void OnInventoryItemEvent(URiftItemInstance* Item, FGameplayTag EventTag);
+
+    /**
+     * Listens to the linked inventory's OnItemAdded delegate.
+     * When bAutoEquipOnPickup is true, automatically equips the item if it has a
+     * URiftFragment_Equippable and the matching slot is empty.
+     *
+     * @param Item       The item that was just added.
+     * @param Container  The container it was placed in (typically backpack).
+     */
+    UFUNCTION()
+    void OnInventoryItemAdded(URiftItemInstance* Item, URiftContainer* Container);
 
     /**
      * Bound to URiftInventoryComponent::OnItemMoved after the inventory is ready.

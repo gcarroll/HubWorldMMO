@@ -22,8 +22,7 @@
  * BlueprintAuthorityOnly UFUNCTIONs from Blueprint.
  *
  * Example usage:
- *   URiftFragment_Condition* CondFrag = Cast<URiftFragment_Condition>(
- *       Item->FindFragmentByClass(URiftFragment_Condition::StaticClass()));
+ *   URiftFragment_Condition* CondFrag = Item->FindFragment<URiftFragment_Condition>();
  *   if (CondFrag)
  *   {
  *       CondFrag->ApplyDamage(Item, 10.f);

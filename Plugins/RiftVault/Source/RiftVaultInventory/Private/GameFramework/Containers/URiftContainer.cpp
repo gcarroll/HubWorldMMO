@@ -259,6 +259,20 @@ int32 URiftContainer::GetSlotIndexOfItem(const URiftItemInstance* Item) const
     return INDEX_NONE;
 }
 
+void URiftContainer::RefreshSlotEntry(const int32 SlotIndex, URiftItemInstance* Item)
+{
+    if (!Slots.Entries.IsValidIndex(SlotIndex))
+    {
+        return;
+    }
+
+    FRiftSlotEntry& Entry = Slots.Entries[SlotIndex];
+    Entry.Item           = Item;
+    Entry.ItemDefinition = IsValid(Item) ? Item->GetDefinition() : nullptr;
+    Entry.Quantity       = IsValid(Item) ? Item->GetCurrentQuantity() : 0;
+    Slots.MarkItemDirty(Entry);
+}
+
 int32 URiftContainer::AddItem(URiftItemInstance* Item)
 {
     if (!IsValid(Item) || IsFull())
@@ -302,10 +316,20 @@ bool URiftContainer::RemoveItem(URiftItemInstance* Item)
         return false;
     }
 
-    Slots.Entries[SlotIndex].Item           = nullptr;
-    Slots.Entries[SlotIndex].ItemDefinition = nullptr;
-    Slots.Entries[SlotIndex].Quantity       = 0;
-    Slots.MarkItemDirty(Slots.Entries[SlotIndex]);
+    const bool bIsList = IsValid(ContainerDefinition)
+        && ContainerDefinition->GetLayoutType() == EContainerLayoutType::List;
+
+    if (bIsList)
+    {
+        // List mode: collapse the array — no empty gaps, order is preserved.
+        Slots.Entries.RemoveAt(SlotIndex);
+        Slots.MarkArrayDirty();
+    }
+    else
+    {
+        // Grid mode: null the slot to preserve slot identity (visual position).
+        RefreshSlotEntry(SlotIndex, nullptr);
+    }
     return true;
 }
 
@@ -344,19 +368,10 @@ bool URiftContainer::MoveItemToSlot(URiftItemInstance* Item, const int32 TargetS
         }
     }
 
-    // Swap source and target slots (item pointer + descriptor fields).
+    // Swap source and target slots.
     TObjectPtr<URiftItemInstance> TargetItem = Slots.Entries[TargetSlotIndex].Item;
-
-    Slots.Entries[TargetSlotIndex].Item           = Item;
-    Slots.Entries[TargetSlotIndex].ItemDefinition = IsValid(Item) ? Item->GetDefinition() : nullptr;
-    Slots.Entries[TargetSlotIndex].Quantity       = IsValid(Item) ? Item->GetCurrentQuantity() : 0;
-
-    Slots.Entries[SourceSlotIndex].Item           = TargetItem;
-    Slots.Entries[SourceSlotIndex].ItemDefinition = IsValid(TargetItem) ? TargetItem->GetDefinition() : nullptr;
-    Slots.Entries[SourceSlotIndex].Quantity       = IsValid(TargetItem) ? TargetItem->GetCurrentQuantity() : 0;
-
-    Slots.MarkItemDirty(Slots.Entries[TargetSlotIndex]);
-    Slots.MarkItemDirty(Slots.Entries[SourceSlotIndex]);
+    RefreshSlotEntry(TargetSlotIndex, Item);
+    RefreshSlotEntry(SourceSlotIndex, TargetItem.Get());
     return true;
 }
 
@@ -367,10 +382,7 @@ bool URiftContainer::PlaceItemAtSlot(URiftItemInstance* Item, const int32 SlotIn
         return false;
     }
 
-    Slots.Entries[SlotIndex].Item           = Item;
-    Slots.Entries[SlotIndex].ItemDefinition = Item->GetDefinition();
-    Slots.Entries[SlotIndex].Quantity       = Item->GetCurrentQuantity();
-    Slots.MarkItemDirty(Slots.Entries[SlotIndex]);
+    RefreshSlotEntry(SlotIndex, Item);
     return true;
 }
 
@@ -378,11 +390,18 @@ void URiftContainer::SetDefinition(URiftContainerDefinition* NewDefinition)
 {
     ContainerDefinition = NewDefinition;
 
-    // Pre-allocate the slot array to capacity so all slots exist from the start.
-    if (IsValid(ContainerDefinition))
+    if (!IsValid(ContainerDefinition))
     {
+        return;
+    }
+
+    if (ContainerDefinition->GetLayoutType() == EContainerLayoutType::Grid)
+    {
+        // Grid: pre-allocate to capacity so slot identity is stable across replication.
+        // Empty slots are preserved as null entries — their index is their visual position.
         Slots.Entries.SetNum(ContainerDefinition->GetCapacity());
     }
+    // List: don't pre-allocate. Slots grow as items are added up to capacity.
 }
 
 void URiftContainer::SetContainerId(const FGuid& NewContainerId)
