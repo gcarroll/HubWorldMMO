@@ -153,6 +153,7 @@ void UOWSAPISubsystem::ProcessOWS2GETRequest(FString ApiModuleToCall, FString Ap
 	Request->SetVerb("GET");
 	Request->SetHeader(TEXT("User-Agent"), "X-UnrealEngine-Agent");
 	Request->SetHeader("Content-Type", TEXT("application/json"));
+	Request->SetHeader(TEXT("Accept-Encoding"), TEXT("gzip"));
 	Request->SetHeader(TEXT("X-CustomerGUID"), OWSAPICustomerKey);
 	Request->ProcessRequest();
 }
