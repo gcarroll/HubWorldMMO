@@ -178,6 +178,8 @@ public:
 
 	FTimerHandle SaveAllPlayerLocationsTimerHandle;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings")
+	bool bEnableContentPullOnServerSpinUp;
 
 	//Time of Day
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TimeOfDay")

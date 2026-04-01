@@ -179,7 +179,7 @@ void AOWSGameMode::StartPlay()
 			//Lookup which Zone this server is running for and get the ZoneName into IAmZoneName var
 			GetZoneInstanceFromZoneInstanceID(ZoneInstanceID);
 		}
-		else
+		else if (bEnableContentPullOnServerSpinUp)
 		{
 			IAmZoneName = DebugZoneName;
 			UGameInstance* GameInstance = UGameplayStatics::GetGameInstance(this);
@@ -703,8 +703,11 @@ void AOWSGameMode::OnGetZoneInstanceFromZoneInstanceIDResponseReceived(FHttpRequ
 				UE_LOG(OWS, Verbose, TEXT("I am ZoneName: %s"), *IAmZoneName);
 				NotifyGetZoneInstanceFromZoneInstanceID(IAmZoneName);
 
-				UGameInstance* GameInstance = UGameplayStatics::GetGameInstance(this);
-				GameInstance->GetSubsystem<UOWSAPISubsystem>()->GetContentCache(IAmZoneName);
+				if (bEnableContentPullOnServerSpinUp)
+				{
+					UGameInstance* GameInstance = UGameplayStatics::GetGameInstance(this);
+					GameInstance->GetSubsystem<UOWSAPISubsystem>()->GetContentCache(IAmZoneName);
+				}
 			}
 			else
 			{

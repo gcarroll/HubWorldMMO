@@ -507,6 +507,7 @@ void AHWPlayerController::NotifyGetCustomCharacterData(TSharedPtr<FJsonObject> J
 			{
 				LoadSupplyPodsOpenedFromJSON(CustomFieldValue);
 			}
+			/*
 			else if (CustomFieldName.Contains("Inventory"))
 			{
 				TInlineComponentArray<UHWInventoryComponent*> AttachedInventoryComponents;
@@ -519,6 +520,7 @@ void AHWPlayerController::NotifyGetCustomCharacterData(TSharedPtr<FJsonObject> J
 					}
 				}
 			}
+			*/
 		}
 
 		//Custom Character Data has been loaded.  Continue with additional Character initialization.

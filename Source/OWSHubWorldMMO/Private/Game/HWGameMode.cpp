@@ -6,6 +6,7 @@
 
 AHWGameMode::AHWGameMode()
 {
+	bEnableContentPullOnServerSpinUp = false;
 	OnZoneContentLoaded.AddDynamic(this, &AHWGameMode::OnZoneContentLoadedHandler);
 }
 
